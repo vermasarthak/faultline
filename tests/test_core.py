@@ -11,6 +11,7 @@ from faultline.fixtures import LatestValueMemory, load_failure_fixtures
 from faultline.store import EvidenceStore
 from faultline.trials import compare_repairs, repeat
 from faultline.heldout import compare_held_out, load_suite
+from faultline.minimize import minimize_failure
 
 
 class EvidenceTests(unittest.TestCase):
@@ -374,3 +375,49 @@ class HeldOutTests(unittest.TestCase):
         held_out.write_text(contents)
         with self.assertRaisesRegex(ValueError, "cannot overlap"):
             load_suite(development, held_out, self.examples)
+
+
+class MinimizationTests(unittest.TestCase):
+    def test_removes_a_distractor_but_keeps_the_correction_history(self):
+        scenario = Scenario(
+            "correction with distractor",
+            (
+                Event("Nia", "city", "Berlin"),
+                Event("Mina", "city", "Rome"),
+                Event("Mina", "city", "Oslo"),
+            ),
+            Probe("Mina", "city"),
+            "Oslo",
+        )
+        result = minimize_failure(scenario, lambda item: run(item, StaleMemory))
+        self.assertEqual(result.target_status, "fail")
+        self.assertEqual(result.removed_events, 1)
+        self.assertEqual(
+            result.minimized.events,
+            (Event("Mina", "city", "Rome"), Event("Mina", "city", "Oslo")),
+        )
+        self.assertEqual(run(result.minimized, StaleMemory)["status"], "fail")
+
+    def test_keeps_a_non_direct_event_when_removal_stops_reproduction(self):
+        scenario = Scenario(
+            "dependency",
+            (Event("Nia", "flag", "on"), Event("Mina", "city", "Oslo")),
+            Probe("Mina", "city"),
+            "Oslo",
+        )
+
+        def evaluate(item):
+            return {"status": "fail" if item.events[0].person == "Nia" else "pass"}
+
+        result = minimize_failure(scenario, evaluate)
+        self.assertEqual(result.removed_events, 0)
+
+    def test_rejects_a_scenario_that_does_not_fail_before_reduction(self):
+        scenario = Scenario(
+            "passing",
+            (Event("Mina", "city", "Oslo"),),
+            Probe("Mina", "city"),
+            "Oslo",
+        )
+        with self.assertRaisesRegex(ValueError, "must reproduce"):
+            minimize_failure(scenario, lambda item: run(item, CorrectionMemory))

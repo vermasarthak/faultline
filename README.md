@@ -39,6 +39,10 @@ Each bounded run opens and closes a fresh adapter session. Adapters receive even
 
 The development and held out manifests partition the synthetic fixtures by canonical scenario fingerprint. A suite refuses overlap. `compare_held_out` runs baseline and candidate over the held out manifest with one shared budget and emits results in manifest order. The held out fixtures are public and synthetic. Held out here means excluded from repair selection, not secret or representative of external model behavior.
 
+## Failure minimization
+
+`minimize_failure` removes events in deterministic source order only when the same failing status reproduces. It retains every event that directly targets the probe person and field, so corrections and deletion history for the queried fact remain intact. It does not infer hidden semantic dependencies across unrelated fields. The reduction is an investigation aid, not a proof of root cause.
+
 ## Scope
 
 This is a testing instrument for developers. It contains synthetic data only. It does not contain Sparkeefy conversations, prompts, schemas, or product logic.
@@ -51,7 +55,7 @@ This is a testing instrument for developers. It contains synthetic data only. It
 4. DONE: failure families for identity confusion, stale facts, invented facts, and deletion.
 5. DONE: durable run storage and crash recovery.
 6. DONE: repeated trials, uncertainty, and held out repair comparisons.
-7. Failure minimization that preserves scenario dependencies.
+7. DONE: failure minimization that preserves direct scenario dependencies.
 8. CLI reports and a focused evidence viewer.
 9. Provider integration and independent memory system comparisons.
 10. Privacy controls, CI, stress testing, benchmarks, and deployment.
