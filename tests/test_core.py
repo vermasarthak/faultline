@@ -358,13 +358,25 @@ os._exit(0)
                         "a" * 64,
                         "b" * 64,
                         "pass",
-                        "{}",
+                        json.dumps(self.evidence),
                     )
                     for index in range(1_100)
                 ],
             )
         self.assertEqual(store.retain_latest(1), 1_099)
         self.assertEqual(len(store.recent(20)), 1)
+
+    def test_corrupt_receipt_payload_is_explicitly_detected(self):
+        store = EvidenceStore(self.path)
+        self.addCleanup(store.close)
+        store.record(self.evidence, self.content_fingerprint, run_id="corrupt")
+        self.assertEqual(store.verify_integrity(), 1)
+        with store.write_transaction() as connection:
+            connection.execute("UPDATE runs SET evidence_json = ? WHERE run_id = ?", ("{", "corrupt"))
+        with self.assertRaisesRegex(ValueError, "stored evidence JSON is corrupt"):
+            store.get("corrupt")
+        with self.assertRaisesRegex(ValueError, "stored evidence JSON is corrupt"):
+            store.verify_integrity()
 
 
 class TrialTests(unittest.TestCase):
@@ -577,6 +589,22 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(stored.returncode, 0, stored.stderr)
         self.assertEqual(json.loads(stored.stdout)["evidence"]["status"], "pass")
+        verified = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "faultline",
+                "verify",
+                "--database",
+                str(database),
+            ],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(verified.returncode, 0, verified.stderr)
+        self.assertEqual(json.loads(verified.stdout), {"integrity": "ok", "receipts": 1})
         deleted = subprocess.run(
             [
                 sys.executable,

@@ -109,6 +109,16 @@ class EvidenceStore:
             )
         return result.rowcount
 
+    def verify_integrity(self) -> int:
+        """Verifies SQLite structure and every persisted evidence payload."""
+        result = self.connection.execute("PRAGMA integrity_check").fetchone()[0]
+        if result != "ok":
+            raise ValueError("SQLite integrity check failed")
+        rows = self.connection.execute("SELECT evidence_json FROM runs").fetchall()
+        for row in rows:
+            _load_evidence(row["evidence_json"])
+        return len(rows)
+
     @contextmanager
     def write_transaction(self) -> Iterator[sqlite3.Connection]:
         self.connection.execute("BEGIN IMMEDIATE")
@@ -162,8 +172,19 @@ def _stored_run(row: sqlite3.Row) -> StoredRun:
         row["run_id"],
         row["recorded_at"],
         row["content_fingerprint"],
-        json.loads(row["evidence_json"]),
+        _load_evidence(row["evidence_json"]),
     )
+
+
+def _load_evidence(raw: str) -> dict:
+    try:
+        evidence = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ValueError("stored evidence JSON is corrupt") from error
+    try:
+        return _validated_evidence(evidence)
+    except (TypeError, ValueError) as error:
+        raise ValueError("stored evidence payload is corrupt") from error
 
 
 def _validated_evidence(evidence: dict) -> dict:

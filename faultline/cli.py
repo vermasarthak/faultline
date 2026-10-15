@@ -50,6 +50,8 @@ def main(argv: Sequence[str]) -> int:
     prune_parser = commands.add_parser("prune", help="retain the newest persisted receipts")
     prune_parser.add_argument("--database", required=True, type=Path)
     prune_parser.add_argument("--keep", required=True, type=int)
+    verify_parser = commands.add_parser("verify", help="verify local evidence database integrity")
+    verify_parser.add_argument("--database", required=True, type=Path)
     benchmark_parser = commands.add_parser("benchmark", help="measure the synthetic harness")
     benchmark_parser.add_argument("--iterations", type=int, default=10_000)
     args = parser.parse_args(argv)
@@ -62,6 +64,8 @@ def main(argv: Sequence[str]) -> int:
             report = _delete(args)
         elif args.command == "prune":
             report = _prune(args)
+        elif args.command == "verify":
+            report = _verify(args)
         elif args.command == "benchmark":
             report = _benchmark(args)
         else:
@@ -142,6 +146,15 @@ def _prune(args) -> dict:
     finally:
         store.close()
     return {"keep": args.keep, "deleted": deleted}
+
+
+def _verify(args) -> dict:
+    store = EvidenceStore(args.database)
+    try:
+        receipts = store.verify_integrity()
+    finally:
+        store.close()
+    return {"integrity": "ok", "receipts": receipts}
 
 
 def _benchmark(args) -> dict:
