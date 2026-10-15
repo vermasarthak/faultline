@@ -19,6 +19,10 @@ Expected answers stay inside the evaluator. Adapters receive events and probes o
 
 Scenario files are JSON objects with the exact keys `version`, `name`, `events`, `probe`, and `expected`. Version one accepts only string values and rejects unknown fields. The loader exposes a raw content fingerprint while the runner records a canonical scenario fingerprint. Durable storage of both fingerprints arrives with persisted runs.
 
+## Adapter boundary
+
+Each bounded run opens and closes a fresh adapter session. Adapters receive events, probes, a deadline, and a declared nonnegative microdollar cost. Faultline records timeout, operation budget, cost budget, invalid response, and provider error outcomes separately from wrong or unknown recall. A deadline is evidence that an adapter exceeded its time budget. It cannot terminate an arbitrary synchronous adapter process.
+
 ## Scope
 
 This is a testing instrument for developers. It contains synthetic data only. It does not contain Sparkeefy conversations, prompts, schemas, or product logic.
@@ -26,9 +30,9 @@ This is a testing instrument for developers. It contains synthetic data only. It
 ## Build checklist
 
 1. DONE: reproducible correction fixture and structured evidence.
-2. NEXT: strict scenario files, content fingerprints, and validation.
-3. Adapter contract with timeouts, budgets, and session boundaries.
-4. Failure families for identity confusion, stale facts, invented facts, and deletion.
+2. DONE: strict scenario files, content fingerprints, and validation.
+3. DONE: adapter contract with timeouts, budgets, and session boundaries.
+4. NEXT: failure families for identity confusion, stale facts, invented facts, and deletion.
 5. Durable run storage and crash recovery.
 6. Repeated trials with uncertainty and held out repair comparisons.
 7. Failure minimization that preserves scenario dependencies.
