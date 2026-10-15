@@ -2,10 +2,10 @@
 
 from dataclasses import dataclass
 from hashlib import sha256
-import json
 from pathlib import Path
 
 from .core import Event, Probe, Scenario
+from .strictjson import decode_object
 
 
 MAX_SCENARIO_BYTES = 256 * 1024
@@ -24,10 +24,7 @@ def load(path: str | Path) -> ScenarioDocument:
     if size > MAX_SCENARIO_BYTES:
         raise ValueError(f"scenario exceeds {MAX_SCENARIO_BYTES} byte limit")
     raw = source.read_bytes()
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as error:
-        raise ValueError("scenario is not valid JSON") from error
+    payload = decode_object(raw, "scenario")
     if not isinstance(payload, dict):
         raise ValueError("scenario root must be an object")
     _exact_keys(payload, {"version", "name", "events", "probe", "expected"}, "scenario")

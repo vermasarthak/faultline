@@ -12,7 +12,7 @@ from faultline.execution import Budget, Recall, run_bounded
 from faultline.fixtures import LatestValueMemory, load_failure_fixtures
 from faultline.store import EvidenceStore
 from faultline.trials import compare_repairs, repeat
-from faultline.heldout import compare_held_out, load_suite
+from faultline.heldout import compare_held_out, load_manifest, load_suite
 from faultline.minimize import minimize_failure
 
 
@@ -79,6 +79,18 @@ class ScenarioLoadingTests(unittest.TestCase):
         malformed = self.write("{")
         with self.assertRaisesRegex(ValueError, "valid JSON"):
             load(malformed)
+
+    def test_rejects_duplicate_root_and_nested_json_keys(self):
+        duplicate_root = self.write(
+            '{"version":1,"name":"x","name":"y","events":[{"person":"Mina","field":"city","value":"Rome"}],"probe":{"person":"Mina","field":"city"},"expected":"Rome"}'
+        )
+        with self.assertRaisesRegex(ValueError, "duplicate key 'name'"):
+            load(duplicate_root)
+        duplicate_nested = self.write(
+            '{"version":1,"name":"x","events":[{"person":"Mina","person":"Nia","field":"city","value":"Rome"}],"probe":{"person":"Mina","field":"city"},"expected":"Rome"}'
+        )
+        with self.assertRaisesRegex(ValueError, "duplicate key 'person'"):
+            load(duplicate_nested)
 
     def test_version_two_makes_deletion_and_expected_absence_explicit(self):
         path = self.write(
@@ -452,6 +464,16 @@ class HeldOutTests(unittest.TestCase):
         held_out.write_text(contents)
         with self.assertRaisesRegex(ValueError, "cannot overlap"):
             load_suite(development, held_out, self.examples)
+
+    def test_manifest_rejects_duplicate_json_keys(self):
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        manifest = Path(directory.name) / "manifest.json"
+        manifest.write_text(
+            '{"version":1,"name":"first","name":"second","scenarios":["deletion.json"]}'
+        )
+        with self.assertRaisesRegex(ValueError, "duplicate key 'name'"):
+            load_manifest(manifest, self.examples)
 
 
 class MinimizationTests(unittest.TestCase):

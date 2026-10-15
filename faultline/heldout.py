@@ -1,13 +1,13 @@
 """Manifest controlled held out scenario comparisons."""
 
 from dataclasses import dataclass
-import json
 from pathlib import Path
 from typing import Callable
 
 from .core import Scenario
 from .execution import Budget, Session, run_bounded
 from .scenario import ScenarioDocument, load
+from .strictjson import decode_object
 from .trials import RepairComparison, compare_repairs
 
 
@@ -42,10 +42,7 @@ class HeldOutReport:
 def load_manifest(path: str | Path, fixture_directory: str | Path | None = None) -> ScenarioManifest:
     manifest_path = Path(path)
     root = Path(fixture_directory) if fixture_directory is not None else manifest_path.parent.parent
-    try:
-        payload = json.loads(manifest_path.read_bytes())
-    except json.JSONDecodeError as error:
-        raise ValueError("manifest is not valid JSON") from error
+    payload = decode_object(manifest_path.read_bytes(), "manifest")
     if not isinstance(payload, dict) or set(payload) != {"version", "name", "scenarios"}:
         raise ValueError("manifest keys must be exactly version, name, and scenarios")
     if payload["version"] != MANIFEST_VERSION:
