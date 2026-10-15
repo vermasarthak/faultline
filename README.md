@@ -33,7 +33,11 @@ Each bounded run opens and closes a fresh adapter session. Adapters receive even
 
 ## Repeated trials
 
-`repeat` records every outcome, latency, and declared cost across identical repeated calls. Only pass and fail outcomes form the reported quality rate. Unknown answers and execution errors remain visible but are not silently counted as quality failures. The Wilson interval describes sampling uncertainty only when trials are independent. Deterministic synthetic fixtures do not satisfy that assumption and their interval is not evidence of model quality. `compare_repairs` refuses to compare baseline and candidate runs whose scenario fingerprints differ. Held out repair evaluation is still pending.
+`repeat` records every outcome, latency, and declared cost across identical repeated calls. Only pass and fail outcomes form the reported quality rate. Unknown answers and execution errors remain visible but are not silently counted as quality failures. The Wilson interval describes sampling uncertainty only when trials are independent. Deterministic synthetic fixtures do not satisfy that assumption and their interval is not evidence of model quality. `compare_repairs` refuses to compare baseline and candidate runs whose scenario fingerprints differ.
+
+## Held out repair checks
+
+The development and held out manifests partition the synthetic fixtures by canonical scenario fingerprint. A suite refuses overlap. `compare_held_out` runs baseline and candidate over the held out manifest with one shared budget and emits results in manifest order. The held out fixtures are public and synthetic. Held out here means excluded from repair selection, not secret or representative of external model behavior.
 
 ## Scope
 
@@ -46,7 +50,7 @@ This is a testing instrument for developers. It contains synthetic data only. It
 3. DONE: adapter contract with timeouts, budgets, and session boundaries.
 4. DONE: failure families for identity confusion, stale facts, invented facts, and deletion.
 5. DONE: durable run storage and crash recovery.
-6. PARTIAL: repeated trials and uncertainty are implemented. Held out repair comparisons remain.
+6. DONE: repeated trials, uncertainty, and held out repair comparisons.
 7. Failure minimization that preserves scenario dependencies.
 8. CLI reports and a focused evidence viewer.
 9. Provider integration and independent memory system comparisons.

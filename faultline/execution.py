@@ -68,9 +68,10 @@ def run_bounded(
             return _non_memory_evidence(scenario, state, operations, cost)
         if response.value is not None and not isinstance(response.value, str):
             return _non_memory_evidence(scenario, "invalid_response", operations, cost)
-        status = "unknown" if response.value is None else (
-            "pass" if response.value == scenario.expected else "fail"
-        )
+        if response.value is None:
+            status = "pass" if scenario.expected is None else "unknown"
+        else:
+            status = "pass" if response.value == scenario.expected else "fail"
         return {
             "schema_version": 1,
             "scenario": scenario.name,

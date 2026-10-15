@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "held out",
+  "scenarios": [
+    "invented-fact.json",
+    "deletion.json"
+  ]
+}

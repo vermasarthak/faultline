@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "name": "development",
+  "scenarios": [
+    "identity-confusion.json",
+    "stale-fact.json"
+  ]
+}

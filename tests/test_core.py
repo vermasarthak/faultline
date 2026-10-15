@@ -10,6 +10,7 @@ from faultline.execution import Budget, Recall, run_bounded
 from faultline.fixtures import LatestValueMemory, load_failure_fixtures
 from faultline.store import EvidenceStore
 from faultline.trials import compare_repairs, repeat
+from faultline.heldout import compare_held_out, load_suite
 
 
 class EvidenceTests(unittest.TestCase):
@@ -319,3 +320,57 @@ class TrialTests(unittest.TestCase):
         ticks = iter([1, 0])
         with self.assertRaisesRegex(ValueError, "clock moved backwards"):
             repeat(lambda: self.evidence("pass"), 1, lambda: next(ticks))
+
+
+class HeldOutTests(unittest.TestCase):
+    def setUp(self):
+        self.examples = Path(__file__).parent.parent / "examples"
+        self.suite = load_suite(
+            self.examples / "manifests" / "development.json",
+            self.examples / "manifests" / "held-out.json",
+        )
+
+    def test_held_out_report_uses_one_budget_and_stable_manifest_order(self):
+        class Session:
+            def __init__(self, ignore_deletes=False):
+                self.values = {}
+                self.ignore_deletes = ignore_deletes
+
+            def observe(self, event, deadline):
+                key = (event.person, event.field)
+                if event.operation == "delete":
+                    if not self.ignore_deletes:
+                        self.values.pop(key, None)
+                else:
+                    self.values[key] = event.value
+                return 0
+
+            def recall(self, probe, deadline):
+                return Recall(self.values.get((probe.person, probe.field)), 0)
+
+            def close(self):
+                pass
+
+        budget = Budget(10, 0, 1)
+        report = compare_held_out(
+            self.suite,
+            lambda: Session(ignore_deletes=True),
+            Session,
+            budget,
+            1,
+        )
+        self.assertEqual(report.budget, budget)
+        self.assertEqual([item.scenario for item in report.comparisons], ["invented fact", "deletion"])
+        self.assertEqual(report.comparisons[0].comparison.pass_rate_delta, 0.0)
+        self.assertEqual(report.comparisons[1].comparison.pass_rate_delta, 1.0)
+
+    def test_manifest_overlap_is_rejected(self):
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        development = Path(directory.name) / "development.json"
+        held_out = Path(directory.name) / "held-out.json"
+        contents = '{"version":1,"name":"set","scenarios":["deletion.json"]}'
+        development.write_text(contents)
+        held_out.write_text(contents)
+        with self.assertRaisesRegex(ValueError, "cannot overlap"):
+            load_suite(development, held_out, self.examples)
