@@ -17,7 +17,11 @@ Expected answers stay inside the evaluator. Adapters receive events and probes o
 
 ## Scenario files
 
-Scenario files are JSON objects with the exact keys `version`, `name`, `events`, `probe`, and `expected`. Version one accepts only string values and rejects unknown fields. The loader exposes a raw content fingerprint while the runner records a canonical scenario fingerprint. Durable storage of both fingerprints arrives with persisted runs.
+Scenario files are JSON objects with the exact keys `version`, `name`, `events`, `probe`, and `expected`. Version one supports string writes only. Version two makes each event operation explicit and permits `expected: null` for an intentional absence. A delete has a null value. Both versions reject unknown fields. The loader exposes a raw content fingerprint while the runner records a canonical scenario fingerprint. Durable storage of both fingerprints arrives with persisted runs.
+
+## Failure fixtures
+
+Four first party JSON fixtures capture a distinct broken behavior: identity confusion, stale facts, invented facts, and deletion. Each fixture has a reference implementation that passes and a deliberately flawed implementation that fails. They are small synthetic checks, not claims about external memory systems.
 
 ## Adapter boundary
 
@@ -32,8 +36,8 @@ This is a testing instrument for developers. It contains synthetic data only. It
 1. DONE: reproducible correction fixture and structured evidence.
 2. DONE: strict scenario files, content fingerprints, and validation.
 3. DONE: adapter contract with timeouts, budgets, and session boundaries.
-4. NEXT: failure families for identity confusion, stale facts, invented facts, and deletion.
-5. Durable run storage and crash recovery.
+4. DONE: failure families for identity confusion, stale facts, invented facts, and deletion.
+5. NEXT: durable run storage and crash recovery.
 6. Repeated trials with uncertainty and held out repair comparisons.
 7. Failure minimization that preserves scenario dependencies.
 8. CLI reports and a focused evidence viewer.

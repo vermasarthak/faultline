@@ -8,7 +8,8 @@ from typing import Callable, Protocol
 class Event:
     person: str
     field: str
-    value: str
+    value: str | None
+    operation: str = "write"
 
 
 @dataclass(frozen=True)
@@ -22,7 +23,7 @@ class Scenario:
     name: str
     events: tuple[Event, ...]
     probe: Probe
-    expected: str
+    expected: str | None
 
     def fingerprint(self) -> str:
         payload = json.dumps(asdict(self), sort_keys=True, ensure_ascii=False)
@@ -41,9 +42,10 @@ def run(scenario: Scenario, factory: Callable[[], Memory]) -> dict:
     actual = memory.recall(scenario.probe)
     if actual is not None and not isinstance(actual, str):
         raise TypeError("adapter must return a string or None")
-    status = "unknown" if actual is None else (
-        "pass" if actual == scenario.expected else "fail"
-    )
+    if actual is None:
+        status = "pass" if scenario.expected is None else "unknown"
+    else:
+        status = "pass" if actual == scenario.expected else "fail"
     return {
         "schema_version": 1,
         "scenario": scenario.name,

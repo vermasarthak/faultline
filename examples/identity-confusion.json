@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "identity confusion",
+  "events": [
+    {"person": "Mina", "field": "city", "operation": "write", "value": "Oslo"},
+    {"person": "Nia", "field": "city", "operation": "write", "value": "Rome"}
+  ],
+  "probe": {"person": "Mina", "field": "city"},
+  "expected": "Oslo"
+}

@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "name": "invented fact",
+  "events": [
+    {"person": "Mina", "field": "city", "operation": "write", "value": "Oslo"}
+  ],
+  "probe": {"person": "Mina", "field": "timezone"},
+  "expected": null
+}

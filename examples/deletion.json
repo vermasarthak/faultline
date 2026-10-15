@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "deletion",
+  "events": [
+    {"person": "Mina", "field": "city", "operation": "write", "value": "Oslo"},
+    {"person": "Mina", "field": "city", "operation": "delete", "value": null}
+  ],
+  "probe": {"person": "Mina", "field": "city"},
+  "expected": null
+}

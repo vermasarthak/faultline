@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "name": "stale fact",
+  "events": [
+    {"person": "Mina", "field": "plan", "operation": "write", "value": "monthly"},
+    {"person": "Mina", "field": "plan", "operation": "write", "value": "annual"}
+  ],
+  "probe": {"person": "Mina", "field": "plan"},
+  "expected": "annual"
+}

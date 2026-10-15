@@ -5,6 +5,7 @@ from faultline.core import Event, Probe, Scenario, run
 from faultline.__main__ import StaleMemory, CorrectionMemory
 from faultline.scenario import load
 from faultline.execution import Budget, Recall, run_bounded
+from faultline.fixtures import LatestValueMemory, load_failure_fixtures
 
 
 class EvidenceTests(unittest.TestCase):
@@ -63,13 +64,28 @@ class ScenarioLoadingTests(unittest.TestCase):
 
     def test_rejects_unknown_schema_version_and_malformed_json(self):
         wrong_version = self.write(
-            '{"version":2,"name":"x","events":[{"person":"Mina","field":"city","value":"Rome"}],"probe":{"person":"Mina","field":"city"},"expected":"Rome"}'
+            '{"version":3,"name":"x","events":[{"person":"Mina","field":"city","value":"Rome"}],"probe":{"person":"Mina","field":"city"},"expected":"Rome"}'
         )
         with self.assertRaisesRegex(ValueError, "unsupported"):
             load(wrong_version)
         malformed = self.write("{")
         with self.assertRaisesRegex(ValueError, "valid JSON"):
             load(malformed)
+
+    def test_version_two_makes_deletion_and_expected_absence_explicit(self):
+        path = self.write(
+            '{"version":2,"name":"deletion","events":[{"person":"Mina","field":"city","operation":"write","value":"Oslo"},{"person":"Mina","field":"city","operation":"delete","value":null}],"probe":{"person":"Mina","field":"city"},"expected":null}'
+        )
+        scenario = load(path).scenario
+        self.assertIsNone(scenario.expected)
+        self.assertEqual(scenario.events[-1].operation, "delete")
+
+    def test_rejects_invalid_version_two_operation_contract(self):
+        path = self.write(
+            '{"version":2,"name":"bad","events":[{"person":"Mina","field":"city","operation":"delete","value":"Oslo"}],"probe":{"person":"Mina","field":"city"},"expected":null}'
+        )
+        with self.assertRaisesRegex(ValueError, "must be null"):
+            load(path)
 
 
 class AdapterExecutionTests(unittest.TestCase):
@@ -148,3 +164,46 @@ class AdapterExecutionTests(unittest.TestCase):
         evidence = run_bounded(scenario, lambda: session, Budget(2, 10, 1))
         self.assertEqual(evidence["status"], "operation_budget_exceeded")
         self.assertFalse(session.recalled)
+
+
+class FailureFixtureTests(unittest.TestCase):
+    def test_reference_fixture_passes_every_first_party_failure_family(self):
+        for document in load_failure_fixtures().values():
+            self.assertEqual(run(document.scenario, LatestValueMemory)["status"], "pass")
+
+    def test_each_family_catches_its_named_broken_behavior(self):
+        fixtures = load_failure_fixtures()
+
+        class FieldOnlyMemory(LatestValueMemory):
+            def __init__(self):
+                self.values = {}
+
+            def observe(self, event):
+                if event.operation == "write":
+                    self.values[event.field] = event.value
+
+            def recall(self, probe):
+                return self.values.get(probe.field)
+
+        class FirstWriteMemory(LatestValueMemory):
+            def observe(self, event):
+                if event.operation == "write":
+                    self.values.setdefault((event.person, event.field), event.value)
+
+        class InventingMemory(LatestValueMemory):
+            def recall(self, probe):
+                return super().recall(probe) or "invented value"
+
+        class DeletionBlindMemory(LatestValueMemory):
+            def observe(self, event):
+                if event.operation != "delete":
+                    super().observe(event)
+
+        cases = {
+            "identity-confusion": FieldOnlyMemory,
+            "stale-fact": FirstWriteMemory,
+            "invented-fact": InventingMemory,
+            "deletion": DeletionBlindMemory,
+        }
+        for name, broken_memory in cases.items():
+            self.assertEqual(run(fixtures[name].scenario, broken_memory)["status"], "fail")
