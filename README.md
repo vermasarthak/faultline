@@ -13,7 +13,7 @@ python3 -m faultline run --scenario examples/correction.json --adapter correctio
 python3 -m faultline benchmark --iterations 10000
 ```
 
-The local CLI emits JSON only. `run` executes a synthetic scenario with a declared budget and optional durable receipt. `show --database evidence.db --run-id ID` reads one receipt. Built in adapters are deliberately simple fixtures named `stale` and `correction`. There is no remote provider integration.
+The local CLI emits JSON only. `run` executes a synthetic scenario with a declared budget and optional durable receipt. `show --database evidence.db --run-id ID` reads one receipt. `delete` removes one local receipt and `prune --database evidence.db --keep N` bounds retention. Built in adapters are deliberately simple fixtures named `stale` and `correction`. There is no remote provider integration.
 
 `benchmark` measures only the fixed synthetic harness workload. Its method and limitations are in [BENCHMARKS.md](BENCHMARKS.md).
 
@@ -37,6 +37,8 @@ Each bounded run opens and closes a fresh adapter session. Adapters receive even
 
 `EvidenceStore` persists completed evidence in a local SQLite database. It uses WAL mode, full synchronous commits, a versioned schema, and an explicit immediate write transaction. A successful `record` call has either committed one complete row or raised an error. A process interruption before commit leaves no partial row. This is local single machine storage. It is not encrypted, authenticated, or a multi tenant service.
 
+Each store instance owns one SQLite connection and must remain in its creating thread. Separate store instances can write to the same database. SQLite serializes these writes with a five second busy timeout. The concurrent writer test covers twelve independent local connections. This is not a load guarantee.
+
 ## Repeated trials
 
 `repeat` records every outcome, latency, and declared cost across identical repeated calls. Only pass and fail outcomes form the reported quality rate. Unknown answers and execution errors remain visible but are not silently counted as quality failures. The Wilson interval describes sampling uncertainty only when trials are independent. Deterministic synthetic fixtures do not satisfy that assumption and their interval is not evidence of model quality. `compare_repairs` refuses to compare baseline and candidate runs whose scenario fingerprints differ.
@@ -53,6 +55,8 @@ The development and held out manifests partition the synthetic fixtures by canon
 
 This is a testing instrument for developers. It contains synthetic data only. It does not contain Sparkeefy conversations, prompts, schemas, or product logic.
 
+Read [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md) before storing any nonpublic data locally.
+
 ## Build checklist
 
 1. DONE: reproducible correction fixture and structured evidence.
@@ -64,6 +68,6 @@ This is a testing instrument for developers. It contains synthetic data only. It
 7. DONE: failure minimization that preserves direct scenario dependencies.
 8. DONE: local CLI reports and focused evidence receipt viewer.
 9. Provider integration and independent memory system comparisons.
-10. PARTIAL: CI and a synthetic harness benchmark are implemented. Privacy controls, stress testing, and deployment remain.
+10. PARTIAL: CI, synthetic harness benchmarking, local privacy controls, and concurrent writer stress coverage are implemented. Deployment remains.
 
 Every completed issue needs tests, a reviewed diff, and a commit reference. Passing fixtures is not evidence that a real assistant works.

@@ -22,14 +22,15 @@ class StoredRun:
 
 
 class EvidenceStore:
-    """A single process safe SQLite store with explicit write transactions."""
+    """A local SQLite store with explicit write transactions."""
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
-        self.connection = sqlite3.connect(self.path)
+        self.connection = sqlite3.connect(self.path, timeout=5)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA journal_mode = WAL")
         self.connection.execute("PRAGMA synchronous = FULL")
+        self.connection.execute("PRAGMA busy_timeout = 5000")
         self._migrate()
 
     def close(self) -> None:
@@ -85,6 +86,30 @@ class EvidenceStore:
         ).fetchall()
         return [_stored_run(row) for row in rows]
 
+    def delete(self, run_id: str) -> bool:
+        """Deletes one local receipt and reports whether it existed."""
+        with self.write_transaction() as connection:
+            result = connection.execute("DELETE FROM runs WHERE run_id = ?", (run_id,))
+        return result.rowcount == 1
+
+    def retain_latest(self, keep: int) -> int:
+        """Deletes older receipts, retaining the newest deterministic ordering."""
+        if not 1 <= keep <= 100_000:
+            raise ValueError("keep must be between 1 and 100000")
+        with self.write_transaction() as connection:
+            rows = connection.execute(
+                "SELECT run_id FROM runs ORDER BY recorded_at DESC, run_id DESC LIMIT -1 OFFSET ?",
+                (keep,),
+            ).fetchall()
+            if not rows:
+                return 0
+            run_ids = [row["run_id"] for row in rows]
+            placeholders = ", ".join("?" for _ in run_ids)
+            result = connection.execute(
+                f"DELETE FROM runs WHERE run_id IN ({placeholders})", run_ids
+            )
+        return result.rowcount
+
     @contextmanager
     def write_transaction(self) -> Iterator[sqlite3.Connection]:
         self.connection.execute("BEGIN IMMEDIATE")
@@ -104,6 +129,12 @@ class EvidenceStore:
             return
         self.connection.execute("BEGIN IMMEDIATE")
         try:
+            current = self.connection.execute("PRAGMA user_version").fetchone()[0]
+            if current > LATEST_SCHEMA_VERSION:
+                raise ValueError("database schema is newer than this Faultline version")
+            if current == LATEST_SCHEMA_VERSION:
+                self.connection.commit()
+                return
             self.connection.execute(
                 """
                 CREATE TABLE runs (

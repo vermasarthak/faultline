@@ -44,6 +44,12 @@ def main(argv: Sequence[str]) -> int:
     show_parser = commands.add_parser("show", help="show a persisted evidence receipt")
     show_parser.add_argument("--database", required=True, type=Path)
     show_parser.add_argument("--run-id", required=True)
+    delete_parser = commands.add_parser("delete", help="delete one persisted evidence receipt")
+    delete_parser.add_argument("--database", required=True, type=Path)
+    delete_parser.add_argument("--run-id", required=True)
+    prune_parser = commands.add_parser("prune", help="retain the newest persisted receipts")
+    prune_parser.add_argument("--database", required=True, type=Path)
+    prune_parser.add_argument("--keep", required=True, type=int)
     benchmark_parser = commands.add_parser("benchmark", help="measure the synthetic harness")
     benchmark_parser.add_argument("--iterations", type=int, default=10_000)
     args = parser.parse_args(argv)
@@ -52,6 +58,10 @@ def main(argv: Sequence[str]) -> int:
             report = _run(args)
         elif args.command == "show":
             report = _show(args)
+        elif args.command == "delete":
+            report = _delete(args)
+        elif args.command == "prune":
+            report = _prune(args)
         elif args.command == "benchmark":
             report = _benchmark(args)
         else:
@@ -114,6 +124,24 @@ def _show(args) -> dict:
         "content_fingerprint": stored.content_fingerprint,
         "evidence": stored.evidence,
     }
+
+
+def _delete(args) -> dict:
+    store = EvidenceStore(args.database)
+    try:
+        deleted = store.delete(args.run_id)
+    finally:
+        store.close()
+    return {"run_id": args.run_id, "deleted": deleted}
+
+
+def _prune(args) -> dict:
+    store = EvidenceStore(args.database)
+    try:
+        deleted = store.retain_latest(args.keep)
+    finally:
+        store.close()
+    return {"keep": args.keep, "deleted": deleted}
 
 
 def _benchmark(args) -> dict:

@@ -2,6 +2,7 @@ import unittest
 import subprocess
 import sys
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from faultline.core import Event, Probe, Scenario, run
@@ -278,6 +279,40 @@ os._exit(0)
         with self.assertRaisesRegex(ValueError, "fingerprint"):
             store.record(self.evidence, "not a fingerprint")
 
+    def test_delete_and_retention_remove_local_receipts(self):
+        store = EvidenceStore(self.path)
+        self.addCleanup(store.close)
+        for index in range(3):
+            store.record(
+                self.evidence,
+                self.content_fingerprint,
+                run_id=f"run-{index}",
+                recorded_at=f"2026-10-16T00:00:0{index}+00:00",
+            )
+        self.assertEqual(store.retain_latest(2), 1)
+        self.assertIsNone(store.get("run-0"))
+        self.assertTrue(store.delete("run-2"))
+        self.assertFalse(store.delete("run-2"))
+
+    def test_separate_store_connections_serialize_concurrent_writers(self):
+        def write(index):
+            store = EvidenceStore(self.path)
+            try:
+                return store.record(
+                    self.evidence,
+                    self.content_fingerprint,
+                    run_id=f"concurrent-{index}",
+                    recorded_at=f"2026-10-16T00:01:{index:02d}+00:00",
+                ).run_id
+            finally:
+                store.close()
+
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            run_ids = list(executor.map(write, range(12)))
+        store = EvidenceStore(self.path)
+        self.addCleanup(store.close)
+        self.assertEqual({item.run_id for item in store.recent(20)}, set(run_ids))
+
 
 class TrialTests(unittest.TestCase):
     fingerprint = "a" * 64
@@ -479,6 +514,24 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(stored.returncode, 0, stored.stderr)
         self.assertEqual(json.loads(stored.stdout)["evidence"]["status"], "pass")
+        deleted = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "faultline",
+                "delete",
+                "--database",
+                str(database),
+                "--run-id",
+                report["stored_run_id"],
+            ],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(deleted.returncode, 0, deleted.stderr)
+        self.assertTrue(json.loads(deleted.stdout)["deleted"])
 
     def test_run_rejects_an_unsupported_adapter(self):
         process = subprocess.run(
