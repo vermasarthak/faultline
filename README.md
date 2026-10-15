@@ -9,7 +9,10 @@ Run with Python 3.11 or newer:
 ```sh
 python3 -m faultline
 python3 -m unittest discover -s tests -v
+python3 -m faultline run --scenario examples/correction.json --adapter correction --attempts 3 --database evidence.db
 ```
+
+The local CLI emits JSON only. `run` executes a synthetic scenario with a declared budget and optional durable receipt. `show --database evidence.db --run-id ID` reads one receipt. Built in adapters are deliberately simple fixtures named `stale` and `correction`. There is no remote provider integration.
 
 The demo teaches an assistant that Mina lives in Rome, corrects it to Oslo, and asks for the current city. The stale fixture fails. The correction fixture passes. Both outputs include the scenario fingerprint and observed response.
 
@@ -56,7 +59,7 @@ This is a testing instrument for developers. It contains synthetic data only. It
 5. DONE: durable run storage and crash recovery.
 6. DONE: repeated trials, uncertainty, and held out repair comparisons.
 7. DONE: failure minimization that preserves direct scenario dependencies.
-8. CLI reports and a focused evidence viewer.
+8. DONE: local CLI reports and focused evidence receipt viewer.
 9. Provider integration and independent memory system comparisons.
 10. Privacy controls, CI, stress testing, benchmarks, and deployment.
 

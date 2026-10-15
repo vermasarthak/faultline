@@ -1,6 +1,7 @@
 import unittest
 import subprocess
 import sys
+import json
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from faultline.core import Event, Probe, Scenario, run
@@ -421,3 +422,80 @@ class MinimizationTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "must reproduce"):
             minimize_failure(scenario, lambda item: run(item, CorrectionMemory))
+
+
+class CliTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(__file__).parent.parent
+        self.scenario = self.root / "examples" / "correction.json"
+        self.directory = TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+
+    def test_run_prints_synthetic_evidence_and_persists_a_receipt(self):
+        database = Path(self.directory.name) / "evidence.db"
+        process = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "faultline",
+                "run",
+                "--scenario",
+                str(self.scenario),
+                "--adapter",
+                "correction",
+                "--attempts",
+                "2",
+                "--database",
+                str(database),
+            ],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(process.returncode, 0, process.stderr)
+        report = json.loads(process.stdout)
+        self.assertEqual(report["data_source"], "synthetic scenario")
+        self.assertEqual(report["summary"]["outcomes"], {"pass": 2})
+        self.assertTrue(report["stored_run_id"])
+        store = EvidenceStore(database)
+        self.addCleanup(store.close)
+        self.assertEqual(store.get(report["stored_run_id"]).evidence["status"], "pass")
+        stored = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "faultline",
+                "show",
+                "--database",
+                str(database),
+                "--run-id",
+                report["stored_run_id"],
+            ],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(stored.returncode, 0, stored.stderr)
+        self.assertEqual(json.loads(stored.stdout)["evidence"]["status"], "pass")
+
+    def test_run_rejects_an_unsupported_adapter(self):
+        process = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "faultline",
+                "run",
+                "--scenario",
+                str(self.scenario),
+                "--adapter",
+                "remote",
+            ],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(process.returncode, 2)
+        self.assertIn("unsupported adapter", process.stderr)

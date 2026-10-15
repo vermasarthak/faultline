@@ -1,4 +1,5 @@
 import json
+import sys
 from .core import Event, Probe, Scenario, run
 
 
@@ -18,7 +19,11 @@ class CorrectionMemory(StaleMemory):
         self.values[(event.person, event.field)] = event.value
 
 
-def main():
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    if argv:
+        from .cli import main as cli_main
+        return cli_main(argv)
     scenario = Scenario("city correction", (
         Event("Mina", "city", "Rome"), Event("Mina", "city", "Oslo"),
     ), Probe("Mina", "city"), "Oslo")
@@ -27,7 +32,8 @@ def main():
         "stale": run(scenario, StaleMemory),
         "corrected": run(scenario, CorrectionMemory),
     }, indent=2))
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
