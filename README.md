@@ -15,6 +15,10 @@ The demo teaches an assistant that Mina lives in Rome, corrects it to Oslo, and 
 
 Expected answers stay inside the evaluator. Adapters receive events and probes only. Unknown answers are reported separately from wrong answers. Each run starts with fresh memory.
 
+## Scenario files
+
+Scenario files are JSON objects with the exact keys `version`, `name`, `events`, `probe`, and `expected`. Version one accepts only string values and rejects unknown fields. The loader exposes a raw content fingerprint while the runner records a canonical scenario fingerprint. Durable storage of both fingerprints arrives with persisted runs.
+
 ## Scope
 
 This is a testing instrument for developers. It contains synthetic data only. It does not contain Sparkeefy conversations, prompts, schemas, or product logic.

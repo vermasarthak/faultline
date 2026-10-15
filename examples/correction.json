@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "city correction",
+  "events": [
+    {"person": "Mina", "field": "city", "value": "Rome"},
+    {"person": "Mina", "field": "city", "value": "Oslo"}
+  ],
+  "probe": {"person": "Mina", "field": "city"},
+  "expected": "Oslo"
+}
