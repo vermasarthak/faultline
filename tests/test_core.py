@@ -147,6 +147,21 @@ class AdapterExecutionTests(unittest.TestCase):
         self.assertEqual(error["error_type"], "RuntimeError")
         self.assertNotIn("secret provider text", str(error))
 
+        class MalformedSession(SlowSession):
+            def recall(self, probe, deadline):
+                return "Oslo"
+
+        malformed = run_bounded(self.scenario, MalformedSession, self.budget)
+        self.assertEqual(malformed["status"], "invalid_response")
+
+    def test_budget_rejects_boolean_fractional_and_nonfinite_values(self):
+        with self.assertRaisesRegex(ValueError, "max_operations"):
+            Budget(True, 0, 1)
+        with self.assertRaisesRegex(ValueError, "max_cost_microusd"):
+            Budget(1, 1.5, 1)
+        with self.assertRaisesRegex(ValueError, "timeout_seconds"):
+            Budget(1, 0, float("inf"))
+
     def test_operation_budget_stops_before_the_probe(self):
         scenario = Scenario(
             "two-events",
@@ -312,6 +327,32 @@ os._exit(0)
         store = EvidenceStore(self.path)
         self.addCleanup(store.close)
         self.assertEqual({item.run_id for item in store.recent(20)}, set(run_ids))
+
+    def test_retention_does_not_depend_on_one_bind_parameter_per_receipt(self):
+        store = EvidenceStore(self.path)
+        self.addCleanup(store.close)
+        with store.write_transaction() as connection:
+            connection.executemany(
+                """
+                INSERT INTO runs (
+                    run_id, recorded_at, canonical_fingerprint, content_fingerprint,
+                    status, evidence_json
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        f"bulk-{index}",
+                        "2026-10-16T00:00:00+00:00",
+                        "a" * 64,
+                        "b" * 64,
+                        "pass",
+                        "{}",
+                    )
+                    for index in range(1_100)
+                ],
+            )
+        self.assertEqual(store.retain_latest(1), 1_099)
+        self.assertEqual(len(store.recent(20)), 1)
 
 
 class TrialTests(unittest.TestCase):

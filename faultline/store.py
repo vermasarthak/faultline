@@ -97,16 +97,15 @@ class EvidenceStore:
         if not 1 <= keep <= 100_000:
             raise ValueError("keep must be between 1 and 100000")
         with self.write_transaction() as connection:
-            rows = connection.execute(
-                "SELECT run_id FROM runs ORDER BY recorded_at DESC, run_id DESC LIMIT -1 OFFSET ?",
-                (keep,),
-            ).fetchall()
-            if not rows:
-                return 0
-            run_ids = [row["run_id"] for row in rows]
-            placeholders = ", ".join("?" for _ in run_ids)
             result = connection.execute(
-                f"DELETE FROM runs WHERE run_id IN ({placeholders})", run_ids
+                """
+                DELETE FROM runs WHERE run_id IN (
+                    SELECT run_id FROM runs
+                    ORDER BY recorded_at DESC, run_id DESC
+                    LIMIT -1 OFFSET ?
+                )
+                """,
+                (keep,),
             )
         return result.rowcount
 

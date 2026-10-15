@@ -1,6 +1,7 @@
 """Bounded adapter execution with evidence for non memory failures."""
 
 from dataclasses import dataclass
+from math import isfinite
 from time import monotonic
 from typing import Callable, Protocol
 
@@ -14,12 +15,12 @@ class Budget:
     timeout_seconds: float
 
     def __post_init__(self):
-        if self.max_operations < 1:
-            raise ValueError("max_operations must be positive")
-        if self.max_cost_microusd < 0:
-            raise ValueError("max_cost_microusd cannot be negative")
-        if self.timeout_seconds <= 0:
-            raise ValueError("timeout_seconds must be positive")
+        if isinstance(self.max_operations, bool) or not isinstance(self.max_operations, int) or self.max_operations < 1:
+            raise ValueError("max_operations must be a positive integer")
+        if isinstance(self.max_cost_microusd, bool) or not isinstance(self.max_cost_microusd, int) or self.max_cost_microusd < 0:
+            raise ValueError("max_cost_microusd must be a nonnegative integer")
+        if isinstance(self.timeout_seconds, bool) or not isinstance(self.timeout_seconds, (int, float)) or not isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
+            raise ValueError("timeout_seconds must be a finite positive number")
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,8 @@ def run_bounded(
         if state:
             return _non_memory_evidence(scenario, state, operations, cost)
         response = session.recall(scenario.probe, deadline)
+        if not isinstance(response, Recall):
+            return _non_memory_evidence(scenario, "invalid_response", operations, cost)
         cost += _cost(response.cost_microusd)
         state = _check_budget(operations, cost, budget, clock(), deadline)
         if state:
@@ -96,7 +99,7 @@ def run_bounded(
 
 
 def _cost(value: object) -> int:
-    if not isinstance(value, int) or value < 0:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise TypeError("adapter cost must be a nonnegative integer")
     return value
 
