@@ -1,4 +1,6 @@
 import unittest
+import subprocess
+import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from faultline.core import Event, Probe, Scenario, run
@@ -6,6 +8,7 @@ from faultline.__main__ import StaleMemory, CorrectionMemory
 from faultline.scenario import load
 from faultline.execution import Budget, Recall, run_bounded
 from faultline.fixtures import LatestValueMemory, load_failure_fixtures
+from faultline.store import EvidenceStore
 
 
 class EvidenceTests(unittest.TestCase):
@@ -207,3 +210,66 @@ class FailureFixtureTests(unittest.TestCase):
         }
         for name, broken_memory in cases.items():
             self.assertEqual(run(fixtures[name].scenario, broken_memory)["status"], "fail")
+
+
+class EvidenceStoreTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.path = Path(self.directory.name) / "evidence.db"
+        self.scenario = Scenario(
+            "stored correction",
+            (Event("Mina", "city", "Oslo"),),
+            Probe("Mina", "city"),
+            "Oslo",
+        )
+        self.evidence = run(self.scenario, CorrectionMemory)
+        self.content_fingerprint = "a" * 64
+
+    def test_committed_evidence_survives_a_reopen(self):
+        store = EvidenceStore(self.path)
+        stored = store.record(
+            self.evidence,
+            self.content_fingerprint,
+            run_id="committed",
+            recorded_at="2026-10-16T00:00:00+00:00",
+        )
+        store.close()
+
+        reopened = EvidenceStore(self.path)
+        self.addCleanup(reopened.close)
+        recovered = reopened.get("committed")
+        self.assertEqual(recovered, stored)
+        self.assertEqual(reopened.recent(), [stored])
+
+    def test_interrupted_transaction_leaves_no_partial_run(self):
+        store = EvidenceStore(self.path)
+        self.addCleanup(store.close)
+        process = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                """
+import os
+import sqlite3
+import sys
+connection = sqlite3.connect(sys.argv[1])
+connection.execute('BEGIN IMMEDIATE')
+connection.execute(
+    'INSERT INTO runs (run_id, recorded_at, canonical_fingerprint, content_fingerprint, status, evidence_json) VALUES (?, ?, ?, ?, ?, ?)',
+    ('partial', '2026-10-16T00:00:00+00:00', 'a' * 64, 'b' * 64, 'pass', '{}'),
+)
+os._exit(0)
+""",
+                str(self.path),
+            ],
+            check=False,
+        )
+        self.assertEqual(process.returncode, 0)
+        self.assertIsNone(store.get("partial"))
+
+    def test_store_rejects_unverifiable_fingerprints(self):
+        store = EvidenceStore(self.path)
+        self.addCleanup(store.close)
+        with self.assertRaisesRegex(ValueError, "fingerprint"):
+            store.record(self.evidence, "not a fingerprint")
