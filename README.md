@@ -57,6 +57,8 @@ This is a testing instrument for developers. It contains synthetic data only. It
 
 Read [PRIVACY.md](PRIVACY.md) and [SECURITY.md](SECURITY.md) before storing any nonpublic data locally.
 
+Read [ARCHITECTURE.md](ARCHITECTURE.md), [DESIGN_DECISIONS.md](DESIGN_DECISIONS.md), and [LIMITATIONS.md](LIMITATIONS.md) for the actual system boundaries and tradeoffs.
+
 ## Build checklist
 
 1. DONE: reproducible correction fixture and structured evidence.
