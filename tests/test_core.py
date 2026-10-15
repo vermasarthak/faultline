@@ -9,6 +9,7 @@ from faultline.scenario import load
 from faultline.execution import Budget, Recall, run_bounded
 from faultline.fixtures import LatestValueMemory, load_failure_fixtures
 from faultline.store import EvidenceStore
+from faultline.trials import compare_repairs, repeat
 
 
 class EvidenceTests(unittest.TestCase):
@@ -273,3 +274,48 @@ os._exit(0)
         self.addCleanup(store.close)
         with self.assertRaisesRegex(ValueError, "fingerprint"):
             store.record(self.evidence, "not a fingerprint")
+
+
+class TrialTests(unittest.TestCase):
+    fingerprint = "a" * 64
+
+    def evidence(self, status, fingerprint=None, cost=0):
+        return {
+            "status": status,
+            "fingerprint": fingerprint or self.fingerprint,
+            "cost_microusd": cost,
+        }
+
+    def test_repeat_separates_quality_from_infrastructure_outcomes(self):
+        results = iter([
+            self.evidence("pass", cost=2),
+            self.evidence("fail", cost=3),
+            self.evidence("provider_error", cost=0),
+        ])
+        ticks = iter([0, 0.1, 1, 1.3, 2, 2.5])
+        summary = repeat(lambda: next(results), 3, lambda: next(ticks))
+        self.assertEqual(summary.outcomes, {"pass": 1, "fail": 1, "provider_error": 1})
+        self.assertEqual(summary.scored_trials, 2)
+        self.assertEqual(summary.pass_rate, 0.5)
+        self.assertEqual(summary.total_cost_microusd, 5)
+        self.assertAlmostEqual(summary.p50_latency_seconds, 0.3)
+        self.assertAlmostEqual(summary.p95_latency_seconds, 0.5)
+        self.assertIsNotNone(summary.wilson_interval_95)
+
+    def test_repair_comparison_requires_identical_scenario_evidence(self):
+        baseline = iter([self.evidence("pass"), self.evidence("fail")])
+        candidate = iter([self.evidence("pass"), self.evidence("pass")])
+        comparison = compare_repairs(lambda: next(baseline), lambda: next(candidate), 2)
+        self.assertEqual(comparison.pass_rate_delta, 0.5)
+
+        with self.assertRaisesRegex(ValueError, "identical scenario"):
+            compare_repairs(
+                lambda: self.evidence("pass"),
+                lambda: self.evidence("pass", fingerprint="b" * 64),
+                1,
+            )
+
+    def test_repeat_rejects_a_clock_regression(self):
+        ticks = iter([1, 0])
+        with self.assertRaisesRegex(ValueError, "clock moved backwards"):
+            repeat(lambda: self.evidence("pass"), 1, lambda: next(ticks))

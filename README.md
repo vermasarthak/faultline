@@ -31,6 +31,10 @@ Each bounded run opens and closes a fresh adapter session. Adapters receive even
 
 `EvidenceStore` persists completed evidence in a local SQLite database. It uses WAL mode, full synchronous commits, a versioned schema, and an explicit immediate write transaction. A successful `record` call has either committed one complete row or raised an error. A process interruption before commit leaves no partial row. This is local single machine storage. It is not encrypted, authenticated, or a multi tenant service.
 
+## Repeated trials
+
+`repeat` records every outcome, latency, and declared cost across identical repeated calls. Only pass and fail outcomes form the reported quality rate. Unknown answers and execution errors remain visible but are not silently counted as quality failures. The Wilson interval describes sampling uncertainty only when trials are independent. Deterministic synthetic fixtures do not satisfy that assumption and their interval is not evidence of model quality. `compare_repairs` refuses to compare baseline and candidate runs whose scenario fingerprints differ. Held out repair evaluation is still pending.
+
 ## Scope
 
 This is a testing instrument for developers. It contains synthetic data only. It does not contain Sparkeefy conversations, prompts, schemas, or product logic.
@@ -42,7 +46,7 @@ This is a testing instrument for developers. It contains synthetic data only. It
 3. DONE: adapter contract with timeouts, budgets, and session boundaries.
 4. DONE: failure families for identity confusion, stale facts, invented facts, and deletion.
 5. DONE: durable run storage and crash recovery.
-6. NEXT: repeated trials with uncertainty and held out repair comparisons.
+6. PARTIAL: repeated trials and uncertainty are implemented. Held out repair comparisons remain.
 7. Failure minimization that preserves scenario dependencies.
 8. CLI reports and a focused evidence viewer.
 9. Provider integration and independent memory system comparisons.
