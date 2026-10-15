@@ -4,9 +4,11 @@ import argparse
 from dataclasses import asdict
 import json
 from pathlib import Path
+from time import perf_counter
 from typing import Sequence
 
 from .__main__ import CorrectionMemory, StaleMemory
+from .core import Event, Probe, Scenario, run
 from .execution import Budget, Recall, run_bounded
 from .scenario import load
 from .store import EvidenceStore
@@ -42,12 +44,16 @@ def main(argv: Sequence[str]) -> int:
     show_parser = commands.add_parser("show", help="show a persisted evidence receipt")
     show_parser.add_argument("--database", required=True, type=Path)
     show_parser.add_argument("--run-id", required=True)
+    benchmark_parser = commands.add_parser("benchmark", help="measure the synthetic harness")
+    benchmark_parser.add_argument("--iterations", type=int, default=10_000)
     args = parser.parse_args(argv)
     try:
         if args.command == "run":
             report = _run(args)
         elif args.command == "show":
             report = _show(args)
+        elif args.command == "benchmark":
+            report = _benchmark(args)
         else:
             raise ValueError(f"unsupported command {args.command!r}")
     except (OSError, ValueError) as error:
@@ -107,6 +113,39 @@ def _show(args) -> dict:
         "recorded_at": stored.recorded_at,
         "content_fingerprint": stored.content_fingerprint,
         "evidence": stored.evidence,
+    }
+
+
+def _benchmark(args) -> dict:
+    if not 1 <= args.iterations <= 1_000_000:
+        raise ValueError("iterations must be between 1 and 1000000")
+    scenario = Scenario(
+        "city correction",
+        (Event("Mina", "city", "Rome"), Event("Mina", "city", "Oslo")),
+        Probe("Mina", "city"),
+        "Oslo",
+    )
+    return {
+        "data_source": "synthetic fixture",
+        "scope": "single process core harness only",
+        "iterations": args.iterations,
+        "operations_per_run": len(scenario.events) + 1,
+        "stale": _measure(scenario, StaleMemory, args.iterations),
+        "correction": _measure(scenario, CorrectionMemory, args.iterations),
+    }
+
+
+def _measure(scenario, adapter, iterations: int) -> dict:
+    outcomes: dict[str, int] = {}
+    started = perf_counter()
+    for _ in range(iterations):
+        status = run(scenario, adapter)["status"]
+        outcomes[status] = outcomes.get(status, 0) + 1
+    elapsed = perf_counter() - started
+    return {
+        "outcomes": outcomes,
+        "elapsed_seconds": elapsed,
+        "runs_per_second": iterations / elapsed if elapsed else None,
     }
 
 

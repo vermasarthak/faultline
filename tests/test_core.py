@@ -499,3 +499,19 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(process.returncode, 2)
         self.assertIn("unsupported adapter", process.stderr)
+
+    def test_benchmark_reports_only_synthetic_harness_results(self):
+        process = subprocess.run(
+            [sys.executable, "-m", "faultline", "benchmark", "--iterations", "3"],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(process.returncode, 0, process.stderr)
+        report = json.loads(process.stdout)
+        self.assertEqual(report["data_source"], "synthetic fixture")
+        self.assertEqual(report["scope"], "single process core harness only")
+        self.assertEqual(report["stale"]["outcomes"], {"fail": 3})
+        self.assertEqual(report["correction"]["outcomes"], {"pass": 3})
+        self.assertGreater(report["stale"]["elapsed_seconds"], 0)

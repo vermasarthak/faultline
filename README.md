@@ -10,9 +10,12 @@ Run with Python 3.11 or newer:
 python3 -m faultline
 python3 -m unittest discover -s tests -v
 python3 -m faultline run --scenario examples/correction.json --adapter correction --attempts 3 --database evidence.db
+python3 -m faultline benchmark --iterations 10000
 ```
 
 The local CLI emits JSON only. `run` executes a synthetic scenario with a declared budget and optional durable receipt. `show --database evidence.db --run-id ID` reads one receipt. Built in adapters are deliberately simple fixtures named `stale` and `correction`. There is no remote provider integration.
+
+`benchmark` measures only the fixed synthetic harness workload. Its method and limitations are in [BENCHMARKS.md](BENCHMARKS.md).
 
 The demo teaches an assistant that Mina lives in Rome, corrects it to Oslo, and asks for the current city. The stale fixture fails. The correction fixture passes. Both outputs include the scenario fingerprint and observed response.
 
@@ -61,6 +64,6 @@ This is a testing instrument for developers. It contains synthetic data only. It
 7. DONE: failure minimization that preserves direct scenario dependencies.
 8. DONE: local CLI reports and focused evidence receipt viewer.
 9. Provider integration and independent memory system comparisons.
-10. Privacy controls, CI, stress testing, benchmarks, and deployment.
+10. PARTIAL: CI and a synthetic harness benchmark are implemented. Privacy controls, stress testing, and deployment remain.
 
 Every completed issue needs tests, a reviewed diff, and a commit reference. Passing fixtures is not evidence that a real assistant works.
