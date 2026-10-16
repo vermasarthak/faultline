@@ -13,7 +13,7 @@ python3 -m faultline run --scenario examples/correction.json --adapter correctio
 python3 -m faultline benchmark --iterations 10000
 ```
 
-The local CLI emits JSON only. `run` executes a synthetic scenario with a declared budget and optional durable receipt. `show --database evidence.db --run-id ID` reads one receipt. `delete` removes one local receipt and `prune --database evidence.db --keep N` bounds retention. `verify --database evidence.db` checks SQLite structure and stored receipt payloads. Built in adapters are deliberately simple fixtures named `stale` and `correction`. There is no remote provider integration.
+The local CLI emits JSON only. `run` executes a synthetic scenario with a declared budget and optional durable receipt. `show --database evidence.db --run-id ID` reads one receipt. `delete` removes one local receipt and `prune --database evidence.db --keep N` bounds retention. `verify --database evidence.db` checks SQLite structure, stored receipt payloads, and indexed receipt metadata. Built in adapters are deliberately simple fixtures named `stale` and `correction`. There is no remote provider integration.
 
 `benchmark` measures only the fixed synthetic harness workload. Its method and limitations are in [BENCHMARKS.md](BENCHMARKS.md).
 

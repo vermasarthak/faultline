@@ -84,7 +84,7 @@ class EvidenceStore:
 
     def get(self, run_id: str) -> StoredRun | None:
         row = self.connection.execute(
-            "SELECT run_id, recorded_at, content_fingerprint, evidence_json "
+            "SELECT run_id, recorded_at, canonical_fingerprint, content_fingerprint, status, evidence_json "
             "FROM runs WHERE run_id = ?",
             (run_id,),
         ).fetchone()
@@ -96,7 +96,7 @@ class EvidenceStore:
         if not 1 <= limit <= 100:
             raise ValueError("limit must be between 1 and 100")
         rows = self.connection.execute(
-            "SELECT run_id, recorded_at, content_fingerprint, evidence_json "
+            "SELECT run_id, recorded_at, canonical_fingerprint, content_fingerprint, status, evidence_json "
             "FROM runs ORDER BY recorded_at DESC, run_id DESC LIMIT ?",
             (limit,),
         ).fetchall()
@@ -130,9 +130,12 @@ class EvidenceStore:
         result = self.connection.execute("PRAGMA integrity_check").fetchone()[0]
         if result != "ok":
             raise ValueError("SQLite integrity check failed")
-        rows = self.connection.execute("SELECT evidence_json FROM runs").fetchall()
+        rows = self.connection.execute(
+            "SELECT run_id, recorded_at, canonical_fingerprint, content_fingerprint, status, evidence_json "
+            "FROM runs"
+        ).fetchall()
         for row in rows:
-            _load_evidence(row["evidence_json"])
+            _stored_run(row)
         return len(rows)
 
     @contextmanager
@@ -197,11 +200,17 @@ class EvidenceStore:
 
 
 def _stored_run(row: sqlite3.Row) -> StoredRun:
+    evidence = _load_evidence(row["evidence_json"])
+    _fingerprint(row["content_fingerprint"], "stored content_fingerprint")
+    if row["canonical_fingerprint"] != evidence["fingerprint"]:
+        raise ValueError("stored receipt canonical fingerprint is corrupt")
+    if row["status"] != evidence["status"]:
+        raise ValueError("stored receipt status is corrupt")
     return StoredRun(
         row["run_id"],
         row["recorded_at"],
         row["content_fingerprint"],
-        _load_evidence(row["evidence_json"]),
+        evidence,
     )
 
 

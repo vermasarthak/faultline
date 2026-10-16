@@ -388,7 +388,7 @@ os._exit(0)
                     (
                         f"bulk-{index}",
                         "2026-10-16T00:00:00+00:00",
-                        "a" * 64,
+                        self.evidence["fingerprint"],
                         "b" * 64,
                         "pass",
                         json.dumps(self.evidence),
@@ -409,6 +409,17 @@ os._exit(0)
         with self.assertRaisesRegex(ValueError, "stored evidence JSON is corrupt"):
             store.get("corrupt")
         with self.assertRaisesRegex(ValueError, "stored evidence JSON is corrupt"):
+            store.verify_integrity()
+
+    def test_corrupt_receipt_metadata_is_explicitly_detected(self):
+        store = EvidenceStore(self.path)
+        self.addCleanup(store.close)
+        store.record(self.evidence, self.content_fingerprint, run_id="metadata")
+        with store.write_transaction() as connection:
+            connection.execute("UPDATE runs SET status = ? WHERE run_id = ?", ("fail", "metadata"))
+        with self.assertRaisesRegex(ValueError, "stored receipt status is corrupt"):
+            store.get("metadata")
+        with self.assertRaisesRegex(ValueError, "stored receipt status is corrupt"):
             store.verify_integrity()
 
 
