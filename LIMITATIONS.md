@@ -1,6 +1,6 @@
 # Limitations
 
-Faultline currently evaluates deterministic synthetic fixtures and can invoke a local executable memory program. Its example program uses SQLite in memory and is not an external model or production memory system. A passing fixture validates harness behavior, not a user outcome.
+Faultline currently evaluates deterministic synthetic fixtures and can invoke a local executable memory program. Its snapshot example uses SQLite in memory. Its continuity example uses a trial scoped SQLite file and tests process restart survival. Neither is an external model or production memory system. A passing fixture validates harness behavior, not a user outcome. Continuity does not test machine crashes, long term retention, or remote persistence unless the selected adapter implements those semantics.
 
 There is no remote provider adapter, verified token accounting from a provider, remote tracing, production latency measurement, authorization, encryption, tenant isolation, deployment, or public hosted demo. Adding any of these requires an explicit budget, credentials, threat model, and operational design. Local executable programs are trusted code, not sandboxed plugins.
 

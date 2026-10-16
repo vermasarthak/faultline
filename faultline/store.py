@@ -267,8 +267,12 @@ def _validated_evidence(evidence: dict) -> dict:
         if adapter.get("kind") == "fixture" and set(adapter) == {"kind", "name"}:
             if not isinstance(adapter["name"], str) or not adapter["name"].strip():
                 raise ValueError("evidence.adapter.name must be nonempty")
-        elif adapter.get("kind") == "local_program" and set(adapter) == {"kind", "sha256"}:
+        elif adapter.get("kind") == "local_program" and set(adapter) in (
+            {"kind", "sha256"}, {"kind", "sha256", "protocol"}
+        ):
             _fingerprint(adapter["sha256"], "evidence.adapter.sha256")
+            if "protocol" in adapter and adapter["protocol"] != "continuity_v2":
+                raise ValueError("evidence.adapter.protocol is invalid")
         else:
             raise ValueError("evidence.adapter has invalid fields")
     if ("events" in evidence) != ("probe" in evidence):

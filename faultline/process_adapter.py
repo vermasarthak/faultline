@@ -7,6 +7,7 @@ from pathlib import Path
 import selectors
 import signal
 import subprocess
+from tempfile import TemporaryDirectory
 from time import monotonic
 
 from .core import Event, Probe
@@ -39,7 +40,7 @@ class ProcessSession:
         ).encode("utf-8") + b"\n"
         if len(request) > MAX_REQUEST_BYTES:
             raise InvalidAdapterResponse("request exceeds protocol limit")
-        raw = _exchange(self.program, request, deadline)
+        raw = _exchange([self.program], request, deadline)
         try:
             response = decode_object(raw, "adapter response")
         except ValueError as error:
@@ -60,11 +61,59 @@ class ProcessSession:
         self.events.clear()
 
 
-def _exchange(program: str, request: bytes, deadline: float) -> bytes:
+class ContinuitySession:
+    """One process per operation, with only a trial scoped directory shared across them."""
+
+    def __init__(self, program: str | Path):
+        self.program = str(Path(program).resolve())
+        self.state = TemporaryDirectory(prefix="faultline-continuity-")
+
+    def observe(self, event: Event, deadline: float) -> int:
+        response = self._request({"version": 2, "operation": "observe", "event": asdict(event)}, deadline)
+        if set(response) != {"version", "cost_microusd"}:
+            raise InvalidAdapterResponse("adapter response fields are invalid")
+        return _response_cost(response)
+
+    def recall(self, probe: Probe, deadline: float) -> Recall:
+        response = self._request({"version": 2, "operation": "recall", "probe": asdict(probe)}, deadline)
+        if set(response) != {"version", "value", "cost_microusd"}:
+            raise InvalidAdapterResponse("adapter response fields are invalid")
+        value = response["value"]
+        if value is not None and not isinstance(value, str):
+            raise InvalidAdapterResponse("adapter response value is invalid")
+        return Recall(value, _response_cost(response))
+
+    def _request(self, payload: dict, deadline: float) -> dict:
+        request = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8") + b"\n"
+        if len(request) > MAX_REQUEST_BYTES:
+            raise InvalidAdapterResponse("request exceeds protocol limit")
+        raw = _exchange([self.program, self.state.name], request, deadline)
+        try:
+            response = decode_object(raw, "adapter response")
+        except ValueError as error:
+            raise InvalidAdapterResponse("adapter response is not valid JSON") from error
+        if not isinstance(response, dict):
+            raise InvalidAdapterResponse("adapter response must be an object")
+        return response
+
+    def close(self) -> None:
+        self.state.cleanup()
+
+
+def _response_cost(response: dict) -> int:
+    if type(response["version"]) is not int or response["version"] != 2:
+        raise InvalidAdapterResponse("adapter response version is invalid")
+    cost = response["cost_microusd"]
+    if type(cost) is not int or cost < 0:
+        raise InvalidAdapterResponse("adapter response cost is invalid")
+    return cost
+
+
+def _exchange(command: list[str], request: bytes, deadline: float) -> bytes:
     if monotonic() >= deadline:
         raise TimeoutError("adapter deadline expired")
     process = subprocess.Popen(
-        [program],
+        command,
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,

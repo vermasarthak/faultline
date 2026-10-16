@@ -16,11 +16,14 @@ python3 -m faultline sweep --adapter correction --seed 17 --scenarios 1000 --max
 python3 -m faultline materialize --seed 17 --index 42 --max-events 20 > generated-case.json
 python3 -m faultline benchmark --iterations 10000
 python3 -m faultline run --scenario examples/correction.json --program examples/sqlite_memory.py
+python3 -m faultline run --scenario examples/correction.json --program examples/sqlite_continuity.py --program-protocol continuity
 ```
 
 The local CLI emits JSON only. `run` executes a synthetic scenario with a declared budget and optional durable receipt. `compare` evaluates two adapters against a public synthetic held out manifest. `minimize` reduces a reproducible synthetic failure while preserving direct probe history. `show --database evidence.db --run-id ID` reads one receipt. `delete` removes one local receipt and `prune --database evidence.db --keep N` bounds retention. `show`, `delete`, `prune`, and `verify` require an existing database so a typo cannot create an empty store. `verify --database evidence.db` checks SQLite structure, stored receipt payloads, and indexed receipt metadata. Built in adapters are deliberately simple fixtures named `stale` and `correction`. `run --program`, `minimize --program`, `sweep --program`, and `compare --baseline-program` or `--candidate-program` can execute a trusted local memory program. There is no remote provider integration.
 
 `benchmark` measures only the fixed synthetic harness workload. Its method and limitations are in [BENCHMARKS.md](BENCHMARKS.md).
+
+The continuity command starts a new executable process for every observation and recall. Its SQLite example persists facts in a private trial directory, so the correction survives process restarts. The default snapshot protocol sends the whole event history to one process and cannot test that guarantee. Both examples are local reference implementations, not real AI memory systems.
 
 Use `compare --fail-on-regression` in a local check or CI job to emit the complete held out report and return a nonzero status when a candidate has a lower scored pass rate, fewer scored trials, or an inconclusive comparison on any held out scenario. Each comparison reports its verdict. This gate fails closed when an adapter outage removes the evidence needed to compare quality. It is an opt in guard, not a claim about real model quality.
 
@@ -43,6 +46,8 @@ Four first party JSON fixtures capture a distinct broken behavior: identity conf
 Each bounded run opens and closes a fresh adapter session. Adapters receive events, probes, a deadline, and a declared nonnegative microdollar cost. Faultline records timeout, operation budget, cost budget, invalid response, and provider error outcomes separately from wrong or unknown recall. Provider errors identify the safe lifecycle stage `open`, `observe`, `recall`, or `close` and the exception class without recording the exception message. In process Python adapters have cooperative deadlines. A local executable adapter runs in a new process group, which Faultline terminates on timeout or excess output. This is process control, not an operating system sandbox.
 
 The executable protocol is for POSIX systems. It accepts one JSON object on standard input: `{"version":1,"events":[...],"probe":{"person":"Mina","field":"city"}}`. Each event has `person`, `field`, `value`, and `operation`. The expected answer is never sent. The program emits exactly one JSON object on standard output: `{"version":1,"value":"Oslo","cost_microusd":0}`. A null value means no recalled fact. Standard error is discarded. Requests are capped at 256 KiB and responses at 16 KiB. Each trial starts a new process, so the example SQLite program holds state only within one scenario. `--max-cost-microusd` checks reported cost after execution; it cannot prevent a program from spending money. Only run programs you trust. Do not point this interface at a paid provider without your own agreed budget and credential controls.
+
+With `--program-protocol continuity`, Faultline passes a new temporary state directory as the program's only argument. Each process receives exactly one version two JSON request. Observe receives `{"version":2,"operation":"observe","event":{"person":"Mina","field":"city","value":"Oslo","operation":"write"}}` and must respond with `{"version":2,"cost_microusd":0}`. Recall receives `{"version":2,"operation":"recall","probe":{"person":"Mina","field":"city"}}` and must respond with `{"version":2,"value":"Oslo","cost_microusd":0}`. No process receives the full history or the expected answer. The directory is private to one attempt and removed on close. Each operation uses the same overall deadline and the executable input and output caps. The directory does not make the executable safe to run. See [examples/sqlite_continuity.py](examples/sqlite_continuity.py) for a complete adapter.
 
 ## Durable evidence
 
@@ -82,7 +87,7 @@ Read [ARCHITECTURE.md](ARCHITECTURE.md), [DESIGN_DECISIONS.md](DESIGN_DECISIONS.
 6. DONE: repeated trials, uncertainty, and held out repair comparisons.
 7. DONE: failure minimization that preserves direct scenario dependencies.
 8. DONE: local CLI reports and focused evidence receipt viewer.
-9. PARTIAL: independent local executable comparisons are implemented. Remote provider integration and independent real memory evaluations remain.
+9. PARTIAL: independent local executable comparisons and process restart continuity checks are implemented. Remote provider integration and independent real memory evaluations remain.
 10. PARTIAL: CI, synthetic harness benchmarking, local privacy controls, and concurrent writer stress coverage are implemented. Deployment remains.
 
 Every completed issue needs tests, a reviewed diff, and a commit reference. Passing fixtures is not evidence that a real assistant works.

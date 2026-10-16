@@ -5,7 +5,7 @@ Faultline evaluates one synthetic memory scenario at a time. It is intentionally
 ## Data flow
 
 1. `scenario.load` uses a bounded read for a strict versioned JSON document and retains a raw content fingerprint.
-2. The evaluator keeps the expected answer. An adapter receives only events, a probe, and a deadline. A local executable receives one bounded JSON request containing the events and probe, never the answer.
+2. The evaluator keeps the expected answer. An adapter receives only events, a probe, and a deadline. The default local executable protocol sends one bounded request containing the events and probe. The opt in continuity protocol launches a new process for each event and for recall, sharing only a trial scoped state directory. Neither protocol sends the answer.
 3. `execution.run_bounded` opens a fresh session, applies events in order, applies operation, cost, and deadline checks, then closes the session.
 4. The evaluator emits structured evidence. Wrong recall, unknown recall, invalid output, provider error, and exhausted budgets remain distinct statuses.
 5. `generate.generate_scenarios` derives bounded synthetic write and delete histories from a seed and independent state oracle. `trials.repeat` aggregates repeated executions. `heldout.compare_held_out` rejects overlapping development and held out scenario fingerprints before comparison.
@@ -13,7 +13,7 @@ Faultline evaluates one synthetic memory scenario at a time. It is intentionally
 
 ## State and isolation
 
-Scenario documents and evidence are immutable values once loaded. Every bounded evaluation opens a new adapter session. This avoids test order changing memory state. The SQLite store owns durable receipts only. It has no queue, background worker, remote transport, or cache.
+Scenario documents and evidence are immutable values once loaded. Every bounded evaluation opens a new adapter session. This avoids test order changing memory state. A continuity session creates a private temporary directory for one attempt and removes it on close. Its selected program owns any persistence inside that directory. The SQLite store owns durable receipts only. It has no queue, background worker, remote transport, or cache.
 
 ## Failure guarantees
 

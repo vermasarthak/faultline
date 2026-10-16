@@ -11,7 +11,7 @@ import unittest
 
 from faultline.core import Event, Probe, Scenario
 from faultline.execution import Budget, run_bounded
-from faultline.process_adapter import ProcessSession
+from faultline.process_adapter import ContinuitySession, ProcessSession
 from faultline.store import EvidenceStore
 
 
@@ -139,6 +139,120 @@ class ProcessAdapterTests(unittest.TestCase):
     def test_example_sqlite_program_handles_correction(self):
         program = Path(__file__).resolve().parents[1] / "examples/sqlite_memory.py"
         self.assertEqual(self.evaluate(program)["status"], "pass")
+
+    def test_continuity_requires_state_across_fresh_processes(self):
+        program = Path(__file__).resolve().parents[1] / "examples/sqlite_continuity.py"
+        result = run_bounded(self.scenario, lambda: ContinuitySession(program), Budget(3, 0, 5))
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["operations"], 3)
+        transient = self.program(
+            "import json, sys\n"
+            "request = json.load(sys.stdin)\n"
+            "response = {'version': 2, 'cost_microusd': 0}\n"
+            "if request['operation'] == 'recall': response['value'] = None\n"
+            "print(json.dumps(response))\n"
+        )
+        result = run_bounded(self.scenario, lambda: ContinuitySession(transient), Budget(3, 0, 5))
+        self.assertEqual(result["status"], "unknown")
+
+    def test_continuity_does_not_replay_history_or_expected_answer(self):
+        program = self.program(
+            "import json, os, pathlib, sys\n"
+            "request = json.load(sys.stdin)\n"
+            "assert set(request) == ({'version', 'operation', 'event'} if "
+            "request['operation'] == 'observe' else {'version', 'operation', 'probe'})\n"
+            "state = pathlib.Path(sys.argv[1]) / 'state'\n"
+            "if request['operation'] == 'observe':\n"
+            "    assert not state.exists() or int(state.read_text().split(':')[0]) != os.getpid()\n"
+            "    state.write_text(str(os.getpid()) + ':' + request['event']['value'])\n"
+            "    response = {'version': 2, 'cost_microusd': 0}\n"
+            "else:\n"
+            "    assert int(state.read_text().split(':')[0]) != os.getpid()\n"
+            "    response = {'version': 2, 'value': state.read_text().split(':')[1], "
+            "'cost_microusd': 0}\n"
+            "print(json.dumps(response))\n"
+        )
+        for _ in range(2):
+            result = run_bounded(self.scenario, lambda: ContinuitySession(program), Budget(3, 0, 5))
+            self.assertEqual(result["status"], "pass")
+
+    def test_continuity_rejects_bad_response_and_hung_observe(self):
+        malformed = self.program(
+            "import json, sys\n"
+            "json.load(sys.stdin)\n"
+            "print('{\"version\":2,\"cost_microusd\":0,\"unexpected\":true}')\n"
+        )
+        result = run_bounded(self.scenario, lambda: ContinuitySession(malformed), Budget(3, 0, 2))
+        self.assertEqual(result["status"], "invalid_response")
+        hung = self.program("import time\ntime.sleep(5)\n")
+        sessions = []
+
+        def open_session():
+            session = ContinuitySession(hung)
+            sessions.append(session)
+            return session
+
+        started = monotonic()
+        result = run_bounded(self.scenario, open_session, Budget(3, 0, 0.1))
+        self.assertEqual(result["status"], "timeout")
+        self.assertLess(monotonic() - started, 2)
+        self.assertFalse(Path(sessions[0].state.name).exists())
+
+    def test_continuity_charges_observations_and_honors_deletion(self):
+        program = self.program(
+            "import json, pathlib, sys\n"
+            "request = json.load(sys.stdin)\n"
+            "state = pathlib.Path(sys.argv[1]) / 'value'\n"
+            "if request['operation'] == 'observe':\n"
+            "    event = request['event']\n"
+            "    if event['operation'] == 'delete': state.unlink(missing_ok=True)\n"
+            "    else: state.write_text(event['value'])\n"
+            "    response = {'version': 2, 'cost_microusd': 1}\n"
+            "else:\n"
+            "    response = {'version': 2, 'value': state.read_text() if state.exists() "
+            "else None, 'cost_microusd': 0}\n"
+            "print(json.dumps(response))\n"
+        )
+        scenario = Scenario(
+            "deleted", (Event("Mina", "city", "Rome"), Event("Mina", "city", None, "delete")),
+            Probe("Mina", "city"), None,
+        )
+        factory = lambda: ContinuitySession(program)
+        passed = run_bounded(scenario, factory, Budget(3, 2, 5))
+        self.assertEqual((passed["status"], passed["cost_microusd"]), ("pass", 2))
+        exceeded = run_bounded(scenario, factory, Budget(3, 1, 5))
+        self.assertEqual((exceeded["status"], exceeded["cost_microusd"]), ("cost_budget_exceeded", 2))
+
+    def test_continuity_requires_a_program(self):
+        root = Path(__file__).resolve().parents[1]
+        process = subprocess.run(
+            [sys.executable, "-m", "faultline", "run", "--scenario",
+             str(root / "examples/correction.json"), "--program-protocol", "continuity"],
+            cwd=root, text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(process.returncode, 2)
+        self.assertIn("requires a local program", process.stderr)
+
+    def test_continuity_cli_stores_protocol_identity(self):
+        root = Path(__file__).resolve().parents[1]
+        program = root / "examples/sqlite_continuity.py"
+        database = self.root / "evidence.db"
+        process = subprocess.run(
+            [sys.executable, "-m", "faultline", "run", "--scenario",
+             str(root / "examples/correction.json"), "--program", str(program),
+             "--program-protocol", "continuity", "--database", str(database)],
+            cwd=root, text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(process.returncode, 0, process.stderr)
+        report = json.loads(process.stdout)
+        self.assertEqual(report["last_evidence"]["status"], "pass")
+        self.assertEqual(report["adapter"]["protocol"], "continuity_v2")
+        store = EvidenceStore(database)
+        try:
+            self.assertEqual(store.get(report["stored_run_id"]).evidence["adapter"], report["adapter"])
+            self.assertEqual(store.verify_integrity(), 1)
+        finally:
+            store.close()
 
     def test_receipt_identifies_the_executable_bytes(self):
         root = Path(__file__).resolve().parents[1]

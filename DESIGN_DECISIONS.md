@@ -19,3 +19,7 @@ Pass and fail contribute to a quality rate. Unknown responses, timeouts, provide
 ## Retain direct probe history during minimization
 
 The reducer may remove an event only if the same failure reproduces. It always preserves events for the queried person and field. This keeps correction and deletion history visible, but cannot infer every causal relationship across unrelated fields.
+
+## Test continuity separately from snapshot recall
+
+The snapshot protocol is cheap and useful for checking final state semantics, but a program can pass by rebuilding its memory from the complete history supplied with every query. Continuity instead runs one process per observation and recall and supplies only a trial scoped directory for shared state. This exposes lost state across process restarts. A persistent remote service might use a separate store outside that directory, so the adapter must isolate its own trial data and cleanup. The extra process launches make continuity slower; use it for durability checks rather than harness throughput measurements.

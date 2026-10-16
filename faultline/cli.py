@@ -16,7 +16,7 @@ from .execution import Budget, Recall, run_bounded
 from .generate import GENERATOR_VERSION, iter_scenarios
 from .heldout import compare_held_out, load_suite
 from .minimize import minimize_failure
-from .process_adapter import ProcessSession
+from .process_adapter import ContinuitySession, ProcessSession
 from .scenario import load
 from .store import EvidenceStore
 from .trials import TrialSummary, repeat
@@ -44,6 +44,7 @@ def main(argv: Sequence[str]) -> int:
     run_parser.add_argument("--scenario", required=True, type=Path)
     run_parser.add_argument("--adapter")
     run_parser.add_argument("--program", type=Path)
+    run_parser.add_argument("--program-protocol", choices=("snapshot", "continuity"), default="snapshot")
     run_parser.add_argument("--attempts", type=int, default=1)
     run_parser.add_argument("--timeout-seconds", type=float, default=5)
     run_parser.add_argument("--max-operations", type=int, default=100)
@@ -134,8 +135,13 @@ def main(argv: Sequence[str]) -> int:
 def _run(args) -> dict:
     document = load(args.scenario)
     budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
-    adapter = _adapter_identity(args.adapter, args.program, "correction")
-    factory = _adapter_factory(args.adapter, args.program, "correction")
+    if args.program_protocol == "continuity" and (args.program is None or args.adapter is not None):
+        raise ValueError("continuity protocol requires a local program and no fixture adapter")
+    adapter = _adapter_identity(args.adapter, args.program, "correction", args.program_protocol)
+    if args.program_protocol == "continuity":
+        factory = lambda: ContinuitySession(args.program)
+    else:
+        factory = _adapter_factory(args.adapter, args.program, "correction")
     evidence: list[dict] = []
 
     def evaluate() -> dict:
@@ -178,18 +184,22 @@ def _adapter_factory(name: str | None, program: Path | None = None, default: str
     return lambda: MemorySession(memory_type)
 
 
-def _adapter_identity(name: str | None, program: Path | None, default: str) -> dict:
+def _adapter_identity(name: str | None, program: Path | None, default: str, protocol: str = "snapshot") -> dict:
     if program is None:
         return {"kind": "fixture", "name": name or default}
     digest = sha256()
     with program.resolve().open("rb") as source:
         for block in iter(lambda: source.read(64 * 1024), b""):
             digest.update(block)
-    return {"kind": "local_program", "sha256": digest.hexdigest()}
+    identity = {"kind": "local_program", "sha256": digest.hexdigest()}
+    if protocol == "continuity":
+        identity["protocol"] = "continuity_v2"
+    return identity
 
 
 def _check_program_unchanged(program: Path | None, identity: dict) -> None:
-    if program is not None and _adapter_identity(None, program, "") != identity:
+    protocol = "continuity" if identity.get("protocol") == "continuity_v2" else "snapshot"
+    if program is not None and _adapter_identity(None, program, "", protocol) != identity:
         raise ValueError("local program changed during evaluation")
 
 
