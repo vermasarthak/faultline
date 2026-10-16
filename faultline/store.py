@@ -10,6 +10,7 @@ from time import monotonic, sleep
 from typing import Iterator
 from uuid import uuid4
 
+from .core import Event, Probe, Scenario
 from .execution import EVIDENCE_STATUSES
 
 LATEST_SCHEMA_VERSION = 1
@@ -221,7 +222,13 @@ def _validated_evidence(evidence: dict) -> dict:
     missing = required - set(evidence)
     if missing:
         raise ValueError(f"evidence is missing {sorted(missing)!r}")
-    if isinstance(evidence["schema_version"], bool) or evidence["schema_version"] != 1:
+    allowed = required | {
+        "events", "probe", "operations", "cost_microusd", "error_type", "error_stage"
+    }
+    unknown = set(evidence) - allowed
+    if unknown:
+        raise ValueError(f"evidence contains undeclared fields {sorted(map(str, unknown))!r}")
+    if type(evidence["schema_version"]) is not int or evidence["schema_version"] != 1:
         raise ValueError("evidence.schema_version must be 1")
     _fingerprint(evidence["fingerprint"], "evidence.fingerprint")
     if not isinstance(evidence["scenario"], str) or not evidence["scenario"].strip():
@@ -233,6 +240,46 @@ def _validated_evidence(evidence: dict) -> dict:
     if evidence["actual"] is not None and not isinstance(evidence["actual"], str):
         raise ValueError("evidence.actual must be a string or null")
     _validate_outcome(evidence["status"], evidence["expected"], evidence["actual"])
+    for field in ("operations", "cost_microusd"):
+        if field in evidence and (
+            isinstance(evidence[field], bool)
+            or not isinstance(evidence[field], int)
+            or evidence[field] < 0
+        ):
+            raise ValueError(f"evidence.{field} must be a nonnegative integer")
+    if "error_type" in evidence and (
+        not isinstance(evidence["error_type"], str) or not evidence["error_type"]
+    ):
+        raise ValueError("evidence.error_type must be a nonempty string")
+    if "error_stage" in evidence and (
+        not isinstance(evidence["error_stage"], str)
+        or evidence["error_stage"] not in {"open", "observe", "recall", "close"}
+    ):
+        raise ValueError("evidence.error_stage is not recognized")
+    if ("error_type" in evidence or "error_stage" in evidence) and evidence["status"] != "provider_error":
+        raise ValueError("error fields require provider_error status")
+    if ("events" in evidence) != ("probe" in evidence):
+        raise ValueError("evidence.events and evidence.probe must appear together")
+    if "events" in evidence:
+        events = evidence["events"]
+        probe = evidence["probe"]
+        if not isinstance(events, list) or not isinstance(probe, dict):
+            raise ValueError("evidence.events and evidence.probe have invalid shapes")
+        if any(not isinstance(item, dict) or set(item) != {
+            "person", "field", "value", "operation"
+        } for item in events) or set(probe) != {"person", "field"}:
+            raise ValueError("evidence.events and evidence.probe contain undeclared fields")
+        try:
+            scenario = Scenario(
+                evidence["scenario"],
+                tuple(Event(**item) for item in events),
+                Probe(**probe),
+                evidence["expected"],
+            )
+        except (TypeError, ValueError) as error:
+            raise ValueError("evidence.events and evidence.probe are invalid") from error
+        if scenario.fingerprint() != evidence["fingerprint"]:
+            raise ValueError("evidence scenario content does not match its fingerprint")
     try:
         json.dumps(evidence, sort_keys=True, separators=(",", ":"))
     except (TypeError, ValueError) as error:

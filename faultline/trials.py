@@ -26,6 +26,7 @@ class RepairComparison:
     baseline: TrialSummary
     candidate: TrialSummary
     pass_rate_delta: float | None
+    verdict: str
 
 
 def repeat(
@@ -60,7 +61,17 @@ def compare_repairs(
         delta = None
     else:
         delta = candidate_summary.pass_rate - baseline_summary.pass_rate
-    return RepairComparison(baseline_summary, candidate_summary, delta)
+    if baseline_summary.scored_trials == 0:
+        verdict = "inconclusive"
+    elif candidate_summary.scored_trials < baseline_summary.scored_trials:
+        verdict = "regression"
+    elif delta is None:
+        verdict = "inconclusive"
+    elif delta < 0:
+        verdict = "regression"
+    else:
+        verdict = "pass"
+    return RepairComparison(baseline_summary, candidate_summary, delta, verdict)
 
 
 def _validate_attempts(attempts: int) -> None:

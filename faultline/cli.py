@@ -116,7 +116,9 @@ def main(argv: Sequence[str]) -> int:
     except (OSError, ValueError) as error:
         parser.error(str(error))
     print(json.dumps(report, sort_keys=True, indent=2))
-    if args.command == "compare" and args.fail_on_regression and report["regression_count"]:
+    if args.command == "compare" and args.fail_on_regression and (
+        report["regression_count"] or report["inconclusive_count"]
+    ):
         return 1
     return 0
 
@@ -180,6 +182,7 @@ def _compare(args) -> dict:
             "baseline": _summary(item.comparison.baseline),
             "candidate": _summary(item.comparison.candidate),
             "pass_rate_delta": item.comparison.pass_rate_delta,
+            "verdict": item.comparison.verdict,
         }
         for item in report.comparisons
     ]
@@ -189,10 +192,8 @@ def _compare(args) -> dict:
         "held_out_manifest": suite.held_out.name,
         "budget": asdict(report.budget),
         "attempts": args.attempts,
-        "regression_count": sum(
-            item["pass_rate_delta"] is not None and item["pass_rate_delta"] < 0
-            for item in comparisons
-        ),
+        "regression_count": sum(item["verdict"] == "regression" for item in comparisons),
+        "inconclusive_count": sum(item["verdict"] == "inconclusive" for item in comparisons),
         "comparisons": comparisons,
     }
 

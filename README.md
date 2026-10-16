@@ -21,7 +21,7 @@ The local CLI emits JSON only. `run` executes a synthetic scenario with a declar
 
 `benchmark` measures only the fixed synthetic harness workload. Its method and limitations are in [BENCHMARKS.md](BENCHMARKS.md).
 
-Use `compare --fail-on-regression` in a local check or CI job to emit the complete held out report and return a nonzero status when a candidate has a lower scored pass rate on any held out scenario. It is an opt in guard for the synthetic fixtures, not a claim about real model quality.
+Use `compare --fail-on-regression` in a local check or CI job to emit the complete held out report and return a nonzero status when a candidate has a lower scored pass rate, fewer scored trials, or an inconclusive comparison on any held out scenario. Each comparison reports its verdict. This gate fails closed when an adapter outage removes the evidence needed to compare quality. It is an opt in guard for the synthetic fixtures, not a claim about real model quality.
 
 `sweep` generates bounded write and delete histories from a declared seed and independent state oracle, then evaluates one adapter. Its output records the generator version, seed, bounds, and failure fingerprints so the run is reproducible. `materialize` turns a sweep index back into a version two scenario file for `minimize`. It is synthetic property coverage, not model coverage.
 
@@ -43,7 +43,7 @@ Each bounded run opens and closes a fresh adapter session. Adapters receive even
 
 ## Durable evidence
 
-`EvidenceStore` persists completed evidence in a local SQLite database. It accepts only schema version one receipts with recognized statuses, valid fingerprints, and outcomes consistent with their expected and actual answers. It uses WAL mode, full synchronous commits, a versioned schema, and an explicit immediate write transaction. A successful `record` call has either committed one complete row or raised an error. A process interruption before commit leaves no partial row. This is local single machine storage. It is not encrypted, authenticated, or a multi tenant service.
+`EvidenceStore` persists completed evidence in a local SQLite database. It accepts only declared schema version one fields with recognized statuses, valid fingerprints, and outcomes consistent with their expected and actual answers. When a receipt includes events and a probe, the store reconstructs the scenario and checks its fingerprint. This rejects undeclared payload fields but does not make scenario content safe to store. It uses WAL mode, full synchronous commits, a versioned schema, and an explicit immediate write transaction. A successful `record` call has either committed one complete row or raised an error. A process interruption before commit leaves no partial row. This is local single machine storage. It is not encrypted, authenticated, or a multi tenant service.
 
 Each store instance owns one SQLite connection and must remain in its creating thread. Separate store instances can write to the same database. SQLite serializes these writes with a five second busy timeout. Connection setup also retries WAL activation during concurrent first use. The concurrent writer test covers twelve independent local connections. This is not a load guarantee.
 

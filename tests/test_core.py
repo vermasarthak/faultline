@@ -385,12 +385,20 @@ os._exit(0)
         self.addCleanup(store.close)
         invalid_cases = (
             ({**self.evidence, "schema_version": 2}, "schema_version"),
+            ({**self.evidence, "schema_version": 1.0}, "schema_version"),
             ({**self.evidence, "status": "unknown status"}, "status"),
             ({**self.evidence, "expected": 3}, "expected"),
             ({**self.evidence, "actual": 3}, "actual"),
             ({**self.evidence, "actual": "Rome"}, "pass evidence"),
             ({**self.evidence, "status": "unknown", "actual": "Oslo"}, "unknown evidence"),
             ({**self.evidence, "status": "provider_error", "actual": "Oslo"}, "execution outcome"),
+            ({**self.evidence, "private_marker": "do not retain"}, "undeclared fields"),
+            ({**self.evidence, "operations": -1}, "operations"),
+            ({**self.evidence, "cost_microusd": True}, "cost_microusd"),
+            ({**self.evidence, "error_stage": []}, "error_stage"),
+            ({**self.evidence, "error_type": "TimeoutError"}, "provider_error"),
+            ({**self.evidence, "events": [{**self.evidence["events"][0], "note": "extra"}]}, "undeclared fields"),
+            ({**self.evidence, "events": []}, "fingerprint"),
         )
         for evidence, message in invalid_cases:
             with self.subTest(message=message), self.assertRaisesRegex(ValueError, message):
@@ -526,6 +534,7 @@ class TrialTests(unittest.TestCase):
         candidate = iter([self.evidence("pass"), self.evidence("pass")])
         comparison = compare_repairs(lambda: next(baseline), lambda: next(candidate), 2)
         self.assertEqual(comparison.pass_rate_delta, 0.5)
+        self.assertEqual(comparison.verdict, "pass")
 
         with self.assertRaisesRegex(ValueError, "identical scenario"):
             compare_repairs(
@@ -533,6 +542,24 @@ class TrialTests(unittest.TestCase):
                 lambda: self.evidence("pass", fingerprint="b" * 64),
                 1,
             )
+
+    def test_repair_gate_rejects_provider_outage_and_lost_coverage(self):
+        baseline = lambda: self.evidence("pass")
+        outage = lambda: self.evidence("provider_error")
+        comparison = compare_repairs(baseline, outage, 3)
+        self.assertIsNone(comparison.pass_rate_delta)
+        self.assertEqual(comparison.verdict, "regression")
+
+        candidate = iter([self.evidence("pass"), self.evidence("provider_error")])
+        comparison = compare_repairs(baseline, lambda: next(candidate), 2)
+        self.assertEqual(comparison.pass_rate_delta, 0.0)
+        self.assertEqual(comparison.verdict, "regression")
+
+        comparison = compare_repairs(outage, outage, 2)
+        self.assertEqual(comparison.verdict, "inconclusive")
+
+        comparison = compare_repairs(outage, baseline, 2)
+        self.assertEqual(comparison.verdict, "inconclusive")
 
     def test_repair_comparison_interleaves_attempts(self):
         order = []
