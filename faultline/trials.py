@@ -50,10 +50,9 @@ def repeat(
         fingerprint = evidence.get("fingerprint")
         if not isinstance(status, str) or not status:
             raise ValueError("evidence.status must be a nonempty string")
-        if not isinstance(fingerprint, str) or not fingerprint:
-            raise ValueError("evidence.fingerprint must be a nonempty string")
+        _fingerprint(fingerprint)
         cost = evidence.get("cost_microusd", 0)
-        if not isinstance(cost, int) or cost < 0:
+        if isinstance(cost, bool) or not isinstance(cost, int) or cost < 0:
             raise ValueError("evidence.cost_microusd must be a nonnegative integer")
         outcomes[status] = outcomes.get(status, 0) + 1
         fingerprints.add(fingerprint)
@@ -98,6 +97,15 @@ def _percentile(values: list[float], percentile: float) -> float:
     ordered = sorted(values)
     index = max(0, min(len(ordered) - 1, int(round((len(ordered) - 1) * percentile))))
     return ordered[index]
+
+
+def _fingerprint(value: object) -> None:
+    if not isinstance(value, str) or len(value) != 64:
+        raise ValueError("evidence.fingerprint must be a SHA 256 hexadecimal fingerprint")
+    try:
+        int(value, 16)
+    except ValueError as error:
+        raise ValueError("evidence.fingerprint must be a SHA 256 hexadecimal fingerprint") from error
 
 
 def _wilson_interval(passes: int, scored: int) -> tuple[float, float]:
