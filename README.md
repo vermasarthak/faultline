@@ -23,7 +23,7 @@ Expected answers stay inside the evaluator. Adapters receive events and probes o
 
 ## Scenario files
 
-Scenario files are JSON objects with the exact keys `version`, `name`, `events`, `probe`, and `expected`. Version one supports string writes only. Version two makes each event operation explicit and permits `expected: null` for an intentional absence. A delete has a null value. Both versions reject unknown and duplicate fields. The loader exposes a raw content fingerprint while the runner records a canonical scenario fingerprint. Durable storage of both fingerprints arrives with persisted runs.
+Scenario files are JSON objects with the exact keys `version`, `name`, `events`, `probe`, and `expected`. Version one supports string writes only. Version two makes each event operation explicit and permits `expected: null` for an intentional absence. A delete has a null value. Both versions reject unknown and duplicate fields. Scenario reads are capped at 256 KiB and manifest reads at 64 KiB, including when a file changes while it is being loaded. The loader exposes a raw content fingerprint while the runner records a canonical scenario fingerprint. Durable storage of both fingerprints arrives with persisted runs.
 
 ## Failure fixtures
 
@@ -37,7 +37,7 @@ Each bounded run opens and closes a fresh adapter session. Adapters receive even
 
 `EvidenceStore` persists completed evidence in a local SQLite database. It uses WAL mode, full synchronous commits, a versioned schema, and an explicit immediate write transaction. A successful `record` call has either committed one complete row or raised an error. A process interruption before commit leaves no partial row. This is local single machine storage. It is not encrypted, authenticated, or a multi tenant service.
 
-Each store instance owns one SQLite connection and must remain in its creating thread. Separate store instances can write to the same database. SQLite serializes these writes with a five second busy timeout. The concurrent writer test covers twelve independent local connections. This is not a load guarantee.
+Each store instance owns one SQLite connection and must remain in its creating thread. Separate store instances can write to the same database. SQLite serializes these writes with a five second busy timeout. Connection setup also retries WAL activation during concurrent first use. The concurrent writer test covers twelve independent local connections. This is not a load guarantee.
 
 ## Repeated trials
 

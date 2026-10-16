@@ -5,7 +5,7 @@ from hashlib import sha256
 from pathlib import Path
 
 from .core import Event, Probe, Scenario
-from .strictjson import decode_object
+from .strictjson import decode_object, read_limited
 
 
 MAX_SCENARIO_BYTES = 256 * 1024
@@ -20,10 +20,7 @@ class ScenarioDocument:
 
 def load(path: str | Path) -> ScenarioDocument:
     source = Path(path)
-    size = source.stat().st_size
-    if size > MAX_SCENARIO_BYTES:
-        raise ValueError(f"scenario exceeds {MAX_SCENARIO_BYTES} byte limit")
-    raw = source.read_bytes()
+    raw = read_limited(source, MAX_SCENARIO_BYTES, "scenario")
     payload = decode_object(raw, "scenario")
     if not isinstance(payload, dict):
         raise ValueError("scenario root must be an object")

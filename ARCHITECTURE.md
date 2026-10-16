@@ -4,7 +4,7 @@ Faultline evaluates one synthetic memory scenario at a time. It is intentionally
 
 ## Data flow
 
-1. `scenario.load` reads a strict versioned JSON document and retains a raw content fingerprint.
+1. `scenario.load` uses a bounded read for a strict versioned JSON document and retains a raw content fingerprint.
 2. The evaluator keeps the expected answer. An adapter receives only events, a probe, and a deadline.
 3. `execution.run_bounded` opens a fresh session, applies events in order, applies operation, cost, and deadline checks, then closes the session.
 4. The evaluator emits structured evidence. Wrong recall, unknown recall, invalid output, provider error, and exhausted budgets remain distinct statuses.
@@ -17,7 +17,7 @@ Scenario documents and evidence are immutable values once loaded. Every bounded 
 
 ## Failure guarantees
 
-SQLite receipts use an immediate transaction, WAL mode, and full synchronous commits. A successful record call has committed a complete row. An interruption before commit leaves no partial row. Separate store instances serialize concurrent writes through SQLite. A shared store instance is not thread safe.
+SQLite receipts use an immediate transaction, WAL mode, and full synchronous commits. A successful record call has committed a complete row. An interruption before commit leaves no partial row. Separate store instances serialize concurrent writes through SQLite. Concurrent connection setup retries WAL activation for up to five seconds. A shared store instance is not thread safe.
 
 Adapter deadlines are cooperative. Faultline can detect that a synchronous adapter returned after its deadline, but cannot kill arbitrary adapter code. It never claims exactly once provider execution or exactly once model inference.
 

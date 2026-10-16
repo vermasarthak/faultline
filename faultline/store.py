@@ -6,11 +6,13 @@ from datetime import datetime, timezone
 import json
 from pathlib import Path
 import sqlite3
+from time import monotonic, sleep
 from typing import Iterator
 from uuid import uuid4
 
 
 LATEST_SCHEMA_VERSION = 1
+CONNECTION_SETUP_TIMEOUT_SECONDS = 5
 
 
 @dataclass(frozen=True)
@@ -26,12 +28,14 @@ class EvidenceStore:
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
-        self.connection = sqlite3.connect(self.path, timeout=5)
+        self.connection = sqlite3.connect(self.path, timeout=CONNECTION_SETUP_TIMEOUT_SECONDS)
         self.connection.row_factory = sqlite3.Row
-        self.connection.execute("PRAGMA journal_mode = WAL")
-        self.connection.execute("PRAGMA synchronous = FULL")
-        self.connection.execute("PRAGMA busy_timeout = 5000")
-        self._migrate()
+        try:
+            self._configure_connection()
+            self._migrate()
+        except BaseException:
+            self.connection.close()
+            raise
 
     def close(self) -> None:
         self.connection.close()
@@ -165,6 +169,19 @@ class EvidenceStore:
             raise
         else:
             self.connection.commit()
+
+    def _configure_connection(self) -> None:
+        self.connection.execute("PRAGMA busy_timeout = 5000")
+        deadline = monotonic() + CONNECTION_SETUP_TIMEOUT_SECONDS
+        while True:
+            try:
+                self.connection.execute("PRAGMA journal_mode = WAL")
+                break
+            except sqlite3.OperationalError as error:
+                if "locked" not in str(error).lower() or monotonic() >= deadline:
+                    raise
+                sleep(0.01)
+        self.connection.execute("PRAGMA synchronous = FULL")
 
 
 def _stored_run(row: sqlite3.Row) -> StoredRun:

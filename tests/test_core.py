@@ -7,12 +7,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from faultline.core import Event, Probe, Scenario, run
 from faultline.__main__ import StaleMemory, CorrectionMemory
-from faultline.scenario import load
+from faultline.scenario import MAX_SCENARIO_BYTES, load
 from faultline.execution import Budget, Recall, run_bounded
 from faultline.fixtures import LatestValueMemory, load_failure_fixtures
 from faultline.store import EvidenceStore
 from faultline.trials import compare_repairs, repeat
-from faultline.heldout import compare_held_out, load_manifest, load_suite
+from faultline.heldout import MAX_MANIFEST_BYTES, compare_held_out, load_manifest, load_suite
 from faultline.minimize import minimize_failure
 
 
@@ -105,6 +105,14 @@ class ScenarioLoadingTests(unittest.TestCase):
             '{"version":2,"name":"bad","events":[{"person":"Mina","field":"city","operation":"delete","value":"Oslo"}],"probe":{"person":"Mina","field":"city"},"expected":null}'
         )
         with self.assertRaisesRegex(ValueError, "must be null"):
+            load(path)
+
+    def test_rejects_scenarios_larger_than_the_read_limit(self):
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = Path(directory.name) / "large.json"
+        path.write_bytes(b"x" * (MAX_SCENARIO_BYTES + 1))
+        with self.assertRaisesRegex(ValueError, "scenario exceeds"):
             load(path)
 
 
@@ -485,6 +493,14 @@ class HeldOutTests(unittest.TestCase):
             '{"version":1,"name":"first","name":"second","scenarios":["deletion.json"]}'
         )
         with self.assertRaisesRegex(ValueError, "duplicate key 'name'"):
+            load_manifest(manifest, self.examples)
+
+    def test_manifest_read_is_bounded(self):
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        manifest = Path(directory.name) / "manifest.json"
+        manifest.write_bytes(b"x" * (MAX_MANIFEST_BYTES + 1))
+        with self.assertRaisesRegex(ValueError, "manifest exceeds"):
             load_manifest(manifest, self.examples)
 
 
