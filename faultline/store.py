@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 import sqlite3
 from time import monotonic, sleep
-from typing import Iterator
+from typing import Iterator, Sequence
 from uuid import uuid4
 
 from .core import Event, Probe, Scenario
@@ -53,24 +53,28 @@ class EvidenceStore:
         _fingerprint(content_fingerprint, "content_fingerprint")
         run_id = run_id or str(uuid4())
         recorded_at = recorded_at or datetime.now(timezone.utc).isoformat()
+        stored = StoredRun(run_id, recorded_at, content_fingerprint, payload)
         with self.write_transaction() as connection:
-            connection.execute(
-                """
-                INSERT INTO runs (
-                    run_id, recorded_at, canonical_fingerprint, content_fingerprint,
-                    status, evidence_json
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    run_id,
-                    recorded_at,
-                    payload["fingerprint"],
-                    content_fingerprint,
-                    payload["status"],
-                    json.dumps(payload, sort_keys=True, separators=(",", ":")),
-                ),
+            _insert_run(connection, stored)
+        return stored
+
+    def record_many(self, evidences: Sequence[dict], content_fingerprint: str) -> list[StoredRun]:
+        """Commits all repeated trial receipts or none of them."""
+        if not 1 <= len(evidences) <= 10_000:
+            raise ValueError("evidence batch size must be between 1 and 10000")
+        payloads = [_validated_evidence(evidence) for evidence in evidences]
+        _fingerprint(content_fingerprint, "content_fingerprint")
+        stored = [
+            StoredRun(
+                str(uuid4()), datetime.now(timezone.utc).isoformat(),
+                content_fingerprint, payload,
             )
-        return StoredRun(run_id, recorded_at, content_fingerprint, payload)
+            for payload in payloads
+        ]
+        with self.write_transaction() as connection:
+            for item in stored:
+                _insert_run(connection, item)
+        return stored
 
     def get(self, run_id: str) -> StoredRun | None:
         row = self.connection.execute(
@@ -189,6 +193,25 @@ class EvidenceStore:
                     raise
                 sleep(0.01)
         self.connection.execute("PRAGMA synchronous = FULL")
+
+
+def _insert_run(connection: sqlite3.Connection, stored: StoredRun) -> None:
+    connection.execute(
+        """
+        INSERT INTO runs (
+            run_id, recorded_at, canonical_fingerprint, content_fingerprint,
+            status, evidence_json
+        ) VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            stored.run_id,
+            stored.recorded_at,
+            stored.evidence["fingerprint"],
+            stored.content_fingerprint,
+            stored.evidence["status"],
+            json.dumps(stored.evidence, sort_keys=True, separators=(",", ":")),
+        ),
+    )
 
 
 def _stored_run(row: sqlite3.Row) -> StoredRun:

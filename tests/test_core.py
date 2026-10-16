@@ -2,11 +2,13 @@ import unittest
 import subprocess
 import sys
 import json
+import sqlite3
 import weakref
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 from faultline.core import Event, Probe, Scenario, run
 from faultline.__main__ import StaleMemory, CorrectionMemory
 from faultline.scenario import MAX_SCENARIO_BYTES, load
@@ -392,6 +394,45 @@ class EvidenceStoreTests(unittest.TestCase):
         recovered = reopened.get("committed")
         self.assertEqual(recovered, stored)
         self.assertEqual(reopened.recent(), [stored])
+
+    def test_repeated_receipts_commit_together_and_preserve_ordered_ids(self):
+        store = EvidenceStore(self.path)
+        self.addCleanup(store.close)
+        stored = store.record_many([self.evidence, self.evidence], self.content_fingerprint)
+        self.assertEqual(len(stored), 2)
+        self.assertNotEqual(stored[0].run_id, stored[1].run_id)
+        self.assertEqual(store.verify_integrity(), 2)
+        self.assertEqual([store.get(item.run_id) for item in stored], stored)
+
+    def test_repeated_receipts_roll_back_on_validation_or_insert_failure(self):
+        store = EvidenceStore(self.path)
+        self.addCleanup(store.close)
+        invalid = {**self.evidence, "actual": "wrong"}
+        with self.assertRaisesRegex(ValueError, "pass evidence"):
+            store.record_many([self.evidence, invalid], self.content_fingerprint)
+        self.assertEqual(store.verify_integrity(), 0)
+        with patch("faultline.store.uuid4", side_effect=["collision", "collision"]):
+            with self.assertRaises(sqlite3.IntegrityError):
+                store.record_many([self.evidence, self.evidence], self.content_fingerprint)
+        self.assertEqual(store.verify_integrity(), 0)
+
+    def test_repeated_receipts_reject_empty_and_oversized_batches(self):
+        store = EvidenceStore(self.path)
+        self.addCleanup(store.close)
+        with self.assertRaisesRegex(ValueError, "batch size"):
+            store.record_many([], self.content_fingerprint)
+        with self.assertRaisesRegex(ValueError, "batch size"):
+            store.record_many([self.evidence] * 10_001, self.content_fingerprint)
+        self.assertEqual(store.verify_integrity(), 0)
+
+    def test_large_repeated_batch_survives_reopen(self):
+        store = EvidenceStore(self.path)
+        stored = store.record_many([self.evidence] * 1_000, self.content_fingerprint)
+        store.close()
+        self.assertEqual(len({item.run_id for item in stored}), 1_000)
+        reopened = EvidenceStore(self.path)
+        self.addCleanup(reopened.close)
+        self.assertEqual(reopened.verify_integrity(), 1_000)
 
     def test_interrupted_transaction_leaves_no_partial_run(self):
         store = EvidenceStore(self.path)
@@ -856,9 +897,11 @@ class CliTests(unittest.TestCase):
         self.assertEqual(report["data_source"], "synthetic scenario")
         self.assertEqual(report["summary"]["outcomes"], {"pass": 2})
         self.assertTrue(report["stored_run_id"])
+        self.assertEqual(len(report["stored_run_ids"]), 2)
+        self.assertEqual(report["stored_run_id"], report["stored_run_ids"][-1])
         store = EvidenceStore(database)
         self.addCleanup(store.close)
-        self.assertEqual(store.get(report["stored_run_id"]).evidence["status"], "pass")
+        self.assertEqual([store.get(run_id).evidence["status"] for run_id in report["stored_run_ids"]], ["pass", "pass"])
         stored = subprocess.run(
             [
                 sys.executable,
@@ -892,7 +935,7 @@ class CliTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(verified.returncode, 0, verified.stderr)
-        self.assertEqual(json.loads(verified.stdout), {"integrity": "ok", "receipts": 1})
+        self.assertEqual(json.loads(verified.stdout), {"integrity": "ok", "receipts": 2})
         deleted = subprocess.run(
             [
                 sys.executable,

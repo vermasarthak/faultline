@@ -164,10 +164,11 @@ def _run(args) -> dict:
     if args.database:
         store = EvidenceStore(args.database)
         try:
-            stored = store.record(evidence[-1], document.content_fingerprint)
+            stored = store.record_many(evidence, document.content_fingerprint)
         finally:
             store.close()
-        report["stored_run_id"] = stored.run_id
+        report["stored_run_id"] = stored[-1].run_id
+        report["stored_run_ids"] = [item.run_id for item in stored]
     return report
 
 
