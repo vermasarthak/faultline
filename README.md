@@ -10,10 +10,11 @@ Run with Python 3.11 or newer:
 python3 -m faultline
 python3 -m unittest discover -s tests -v
 python3 -m faultline run --scenario examples/correction.json --adapter correction --attempts 3 --database evidence.db
+python3 -m faultline compare --development-manifest examples/manifests/development.json --held-out-manifest examples/manifests/held-out.json --baseline stale --candidate correction --attempts 3
 python3 -m faultline benchmark --iterations 10000
 ```
 
-The local CLI emits JSON only. `run` executes a synthetic scenario with a declared budget and optional durable receipt. `show --database evidence.db --run-id ID` reads one receipt. `delete` removes one local receipt and `prune --database evidence.db --keep N` bounds retention. `show`, `delete`, `prune`, and `verify` require an existing database so a typo cannot create an empty store. `verify --database evidence.db` checks SQLite structure, stored receipt payloads, and indexed receipt metadata. Built in adapters are deliberately simple fixtures named `stale` and `correction`. There is no remote provider integration.
+The local CLI emits JSON only. `run` executes a synthetic scenario with a declared budget and optional durable receipt. `compare` evaluates two built in fixtures against a public synthetic held out manifest. `show --database evidence.db --run-id ID` reads one receipt. `delete` removes one local receipt and `prune --database evidence.db --keep N` bounds retention. `show`, `delete`, `prune`, and `verify` require an existing database so a typo cannot create an empty store. `verify --database evidence.db` checks SQLite structure, stored receipt payloads, and indexed receipt metadata. Built in adapters are deliberately simple fixtures named `stale` and `correction`. There is no remote provider integration.
 
 `benchmark` measures only the fixed synthetic harness workload. Its method and limitations are in [BENCHMARKS.md](BENCHMARKS.md).
 
@@ -45,7 +46,7 @@ Each store instance owns one SQLite connection and must remain in its creating t
 
 ## Held out repair checks
 
-The development and held out manifests partition the synthetic fixtures by canonical scenario fingerprint. A suite refuses overlap. `compare_held_out` runs baseline and candidate over the held out manifest with one shared budget and emits results in manifest order. The held out fixtures are public and synthetic. Held out here means excluded from repair selection, not secret or representative of external model behavior.
+The development and held out manifests partition the synthetic fixtures by canonical scenario fingerprint. A suite refuses overlap. `compare_held_out` runs baseline and candidate over the held out manifest with the same declared budget configuration for each evaluation and emits results in manifest order. The held out fixtures are public and synthetic. Held out here means excluded from repair selection, not secret or representative of external model behavior.
 
 ## Failure minimization
 

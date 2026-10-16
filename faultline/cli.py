@@ -11,6 +11,7 @@ from typing import Sequence
 from .__main__ import CorrectionMemory, StaleMemory
 from .core import Event, Probe, Scenario, run
 from .execution import Budget, Recall, run_bounded
+from .heldout import compare_held_out, load_suite
 from .scenario import load
 from .store import EvidenceStore
 from .trials import TrialSummary, repeat
@@ -42,6 +43,16 @@ def main(argv: Sequence[str]) -> int:
     run_parser.add_argument("--max-operations", type=int, default=100)
     run_parser.add_argument("--max-cost-microusd", type=int, default=0)
     run_parser.add_argument("--database", type=Path)
+    compare_parser = commands.add_parser("compare", help="compare synthetic fixtures on a held out manifest")
+    compare_parser.add_argument("--development-manifest", required=True, type=Path)
+    compare_parser.add_argument("--held-out-manifest", required=True, type=Path)
+    compare_parser.add_argument("--fixture-directory", type=Path)
+    compare_parser.add_argument("--baseline", default="stale")
+    compare_parser.add_argument("--candidate", default="correction")
+    compare_parser.add_argument("--attempts", type=int, default=1)
+    compare_parser.add_argument("--timeout-seconds", type=float, default=5)
+    compare_parser.add_argument("--max-operations", type=int, default=100)
+    compare_parser.add_argument("--max-cost-microusd", type=int, default=0)
     show_parser = commands.add_parser("show", help="show a persisted evidence receipt")
     show_parser.add_argument("--database", required=True, type=Path)
     show_parser.add_argument("--run-id", required=True)
@@ -59,6 +70,8 @@ def main(argv: Sequence[str]) -> int:
     try:
         if args.command == "run":
             report = _run(args)
+        elif args.command == "compare":
+            report = _compare(args)
         elif args.command == "show":
             report = _show(args)
         elif args.command == "delete":
@@ -113,6 +126,39 @@ def _adapter_factory(name: str):
     if memory_type is None:
         raise ValueError(f"unsupported adapter {name!r}; use stale or correction")
     return lambda: MemorySession(memory_type)
+
+
+def _compare(args) -> dict:
+    suite = load_suite(
+        args.development_manifest,
+        args.held_out_manifest,
+        args.fixture_directory,
+    )
+    budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
+    report = compare_held_out(
+        suite,
+        _adapter_factory(args.baseline),
+        _adapter_factory(args.candidate),
+        budget,
+        args.attempts,
+    )
+    return {
+        "data_source": "synthetic manifests",
+        "development_manifest": suite.development.name,
+        "held_out_manifest": suite.held_out.name,
+        "budget": asdict(report.budget),
+        "attempts": args.attempts,
+        "comparisons": [
+            {
+                "scenario": item.scenario,
+                "fingerprint": item.fingerprint,
+                "baseline": _summary(item.comparison.baseline),
+                "candidate": _summary(item.comparison.candidate),
+                "pass_rate_delta": item.comparison.pass_rate_delta,
+            }
+            for item in report.comparisons
+        ],
+    }
 
 
 def _show(args) -> dict:

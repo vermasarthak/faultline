@@ -728,6 +728,38 @@ class CliTests(unittest.TestCase):
         self.assertEqual(process.returncode, 2)
         self.assertIn("unsupported adapter", process.stderr)
 
+    def test_compare_reports_held_out_synthetic_repair_evidence(self):
+        process = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "faultline",
+                "compare",
+                "--development-manifest",
+                str(self.root / "examples" / "manifests" / "development.json"),
+                "--held-out-manifest",
+                str(self.root / "examples" / "manifests" / "held-out.json"),
+                "--baseline",
+                "stale",
+                "--candidate",
+                "correction",
+                "--attempts",
+                "2",
+            ],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(process.returncode, 0, process.stderr)
+        report = json.loads(process.stdout)
+        self.assertEqual(report["data_source"], "synthetic manifests")
+        self.assertEqual(report["development_manifest"], "development")
+        self.assertEqual(report["held_out_manifest"], "held out")
+        self.assertEqual(report["attempts"], 2)
+        self.assertEqual([item["scenario"] for item in report["comparisons"]], ["invented fact", "deletion"])
+        self.assertEqual(report["comparisons"][1]["pass_rate_delta"], 1.0)
+
     def test_maintenance_commands_do_not_create_a_missing_database(self):
         commands = (
             ("show", "--run-id", "missing"),

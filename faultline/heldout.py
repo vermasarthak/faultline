@@ -82,7 +82,7 @@ def compare_held_out(
     budget: Budget,
     attempts: int,
 ) -> HeldOutReport:
-    """Runs both adapters over the held out suite under one shared budget."""
+    """Runs both adapters over the held out suite with one budget configuration."""
     comparisons = []
     for document in suite.held_out.documents:
         scenario = document.scenario
