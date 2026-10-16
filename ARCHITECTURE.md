@@ -8,7 +8,7 @@ Faultline evaluates one synthetic memory scenario at a time. It is intentionally
 2. The evaluator keeps the expected answer. An adapter receives only events, a probe, and a deadline. The default local executable protocol sends one bounded request containing the events and probe. The opt in continuity protocol launches a new process for each event and for recall, sharing only a trial scoped state directory. Neither protocol sends the answer.
 3. `execution.run_bounded` opens a fresh session, applies events in order, applies operation, cost, and deadline checks, then closes the session.
 4. The evaluator emits structured evidence. Wrong recall, unknown recall, invalid output, provider error, and exhausted budgets remain distinct statuses.
-5. `generate.generate_scenarios` derives bounded synthetic write and delete histories from a seed and independent state oracle. `trials.repeat` aggregates repeated executions. `heldout.compare_held_out` rejects overlapping development and held out scenario fingerprints before comparison.
+5. `generate.generate_scenarios` derives bounded synthetic write and delete histories from a seed and independent state oracle. `trials.repeat` aggregates repeated executions. `heldout.compare_held_out` rejects overlapping development and held out scenario fingerprints before comparison. All three workflows can use the continuity protocol for local programs, while keeping each evaluation's state separate.
 6. `store.EvidenceStore` can commit one completed evidence object as a local SQLite receipt.
 
 ## State and isolation

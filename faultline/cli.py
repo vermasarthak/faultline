@@ -58,6 +58,7 @@ def main(argv: Sequence[str]) -> int:
     compare_parser.add_argument("--candidate")
     compare_parser.add_argument("--baseline-program", type=Path)
     compare_parser.add_argument("--candidate-program", type=Path)
+    compare_parser.add_argument("--program-protocol", choices=("snapshot", "continuity"), default="snapshot")
     compare_parser.add_argument("--attempts", type=int, default=1)
     compare_parser.add_argument("--timeout-seconds", type=float, default=5)
     compare_parser.add_argument("--max-operations", type=int, default=100)
@@ -67,6 +68,7 @@ def main(argv: Sequence[str]) -> int:
     minimize_parser.add_argument("--scenario", required=True, type=Path)
     minimize_parser.add_argument("--adapter")
     minimize_parser.add_argument("--program", type=Path)
+    minimize_parser.add_argument("--program-protocol", choices=("snapshot", "continuity"), default="snapshot")
     minimize_parser.add_argument("--max-evaluations", type=int, default=1_000)
     minimize_parser.add_argument("--timeout-seconds", type=float, default=5)
     minimize_parser.add_argument("--max-operations", type=int, default=100)
@@ -78,6 +80,7 @@ def main(argv: Sequence[str]) -> int:
     sweep_parser = commands.add_parser("sweep", help="run generated synthetic memory histories")
     sweep_parser.add_argument("--adapter")
     sweep_parser.add_argument("--program", type=Path)
+    sweep_parser.add_argument("--program-protocol", choices=("snapshot", "continuity"), default="snapshot")
     sweep_parser.add_argument("--seed", type=int, default=1)
     sweep_parser.add_argument("--scenarios", type=int, default=100)
     sweep_parser.add_argument("--max-events", type=int, default=20)
@@ -138,10 +141,7 @@ def _run(args) -> dict:
     if args.program_protocol == "continuity" and (args.program is None or args.adapter is not None):
         raise ValueError("continuity protocol requires a local program and no fixture adapter")
     adapter = _adapter_identity(args.adapter, args.program, "correction", args.program_protocol)
-    if args.program_protocol == "continuity":
-        factory = lambda: ContinuitySession(args.program)
-    else:
-        factory = _adapter_factory(args.adapter, args.program, "correction")
+    factory = _adapter_factory(args.adapter, args.program, "correction", args.program_protocol)
     evidence: list[dict] = []
 
     def evaluate() -> dict:
@@ -171,10 +171,15 @@ def _run(args) -> dict:
     return report
 
 
-def _adapter_factory(name: str | None, program: Path | None = None, default: str = "correction"):
+def _adapter_factory(
+    name: str | None, program: Path | None = None,
+    default: str = "correction", protocol: str = "snapshot"
+):
     if program is not None:
         if name is not None:
             raise ValueError("select either a fixture adapter or a local program")
+        if protocol == "continuity":
+            return lambda: ContinuitySession(program)
         return lambda: ProcessSession(program)
     name = name or default
     adapters = {"stale": StaleMemory, "correction": CorrectionMemory}
@@ -203,6 +208,11 @@ def _check_program_unchanged(program: Path | None, identity: dict) -> None:
         raise ValueError("local program changed during evaluation")
 
 
+def _require_continuity_program(protocol: str, *programs: Path | None) -> None:
+    if protocol == "continuity" and not any(program is not None for program in programs):
+        raise ValueError("continuity protocol requires a local program")
+
+
 def _compare(args) -> dict:
     suite = load_suite(
         args.development_manifest,
@@ -210,12 +220,13 @@ def _compare(args) -> dict:
         args.fixture_directory,
     )
     budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
-    baseline_adapter = _adapter_identity(args.baseline, args.baseline_program, "stale")
-    candidate_adapter = _adapter_identity(args.candidate, args.candidate_program, "correction")
+    _require_continuity_program(args.program_protocol, args.baseline_program, args.candidate_program)
+    baseline_adapter = _adapter_identity(args.baseline, args.baseline_program, "stale", args.program_protocol)
+    candidate_adapter = _adapter_identity(args.candidate, args.candidate_program, "correction", args.program_protocol)
     report = compare_held_out(
         suite,
-        _adapter_factory(args.baseline, args.baseline_program, "stale"),
-        _adapter_factory(args.candidate, args.candidate_program, "correction"),
+        _adapter_factory(args.baseline, args.baseline_program, "stale", args.program_protocol),
+        _adapter_factory(args.candidate, args.candidate_program, "correction", args.program_protocol),
         budget,
         args.attempts,
     )
@@ -252,8 +263,9 @@ def _compare(args) -> dict:
 def _minimize(args) -> dict:
     document = load(args.scenario)
     budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
-    adapter = _adapter_identity(args.adapter, args.program, "stale")
-    factory = _adapter_factory(args.adapter, args.program, "stale")
+    _require_continuity_program(args.program_protocol, args.program)
+    adapter = _adapter_identity(args.adapter, args.program, "stale", args.program_protocol)
+    factory = _adapter_factory(args.adapter, args.program, "stale", args.program_protocol)
     result = minimize_failure(
         document.scenario,
         lambda scenario: run_bounded(scenario, factory, budget),
@@ -280,8 +292,9 @@ def _sweep(args) -> dict:
         raise ValueError("max_events must be below max_operations to reserve a probe operation")
     scenarios = iter_scenarios(args.seed, args.scenarios, args.max_events)
     budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
-    adapter = _adapter_identity(args.adapter, args.program, "correction")
-    factory = _adapter_factory(args.adapter, args.program, "correction")
+    _require_continuity_program(args.program_protocol, args.program)
+    adapter = _adapter_identity(args.adapter, args.program, "correction", args.program_protocol)
+    factory = _adapter_factory(args.adapter, args.program, "correction", args.program_protocol)
     outcomes: dict[str, int] = {}
     failures = []
     for index, scenario in enumerate(scenarios):

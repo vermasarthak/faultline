@@ -254,6 +254,78 @@ class ProcessAdapterTests(unittest.TestCase):
         finally:
             store.close()
 
+    def test_continuity_generated_sweep_and_repair_gate(self):
+        root = Path(__file__).resolve().parents[1]
+        durable = root / "examples/sqlite_continuity.py"
+        sweep = subprocess.run(
+            [sys.executable, "-m", "faultline", "sweep", "--program", str(durable),
+             "--program-protocol", "continuity", "--seed", "11", "--scenarios", "20",
+             "--max-events", "8", "--max-operations", "9"],
+            cwd=root, text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(sweep.returncode, 0, sweep.stderr)
+        self.assertEqual(json.loads(sweep.stdout)["outcomes"], {"pass": 20})
+
+        transient = self.program(
+            "import json, sys\n"
+            "request = json.load(sys.stdin)\n"
+            "response = {'version': 2, 'cost_microusd': 0}\n"
+            "if request['operation'] == 'recall': response['value'] = 'Rome'\n"
+            "print(json.dumps(response))\n"
+        )
+        comparison = subprocess.run(
+            [sys.executable, "-m", "faultline", "compare", "--development-manifest",
+             str(root / "examples/manifests/development.json"), "--held-out-manifest",
+             str(root / "examples/manifests/held-out.json"), "--baseline-program", str(durable),
+             "--candidate-program", str(transient), "--program-protocol", "continuity",
+             "--fail-on-regression"],
+            cwd=root, text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(comparison.returncode, 1, comparison.stderr)
+        report = json.loads(comparison.stdout)
+        self.assertEqual(report["regression_count"], 2)
+        self.assertEqual(report["baseline_adapter"]["protocol"], "continuity_v2")
+        self.assertEqual(report["candidate_adapter"]["protocol"], "continuity_v2")
+
+    def test_continuity_failure_can_be_minimized(self):
+        root = Path(__file__).resolve().parents[1]
+        stale = self.program(
+            "import json, pathlib, sys\n"
+            "request = json.load(sys.stdin)\n"
+            "state = pathlib.Path(sys.argv[1]) / 'first.json'\n"
+            "facts = json.loads(state.read_text()) if state.exists() else {}\n"
+            "if request['operation'] == 'observe':\n"
+            "    event = request['event']\n"
+            "    facts.setdefault(event['person'] + ':' + event['field'], event['value'])\n"
+            "    state.write_text(json.dumps(facts))\n"
+            "    response = {'version': 2, 'cost_microusd': 0}\n"
+            "else:\n"
+            "    probe = request['probe']\n"
+            "    response = {'version': 2, 'cost_microusd': 0, "
+            "'value': facts.get(probe['person'] + ':' + probe['field'])}\n"
+            "print(json.dumps(response))\n"
+        )
+        scenario = self.root / "scenario.json"
+        scenario.write_text(json.dumps({
+            "version": 2, "name": "distracted correction",
+            "events": [
+                {"person": "Other", "field": "city", "value": "Paris", "operation": "write"},
+                {"person": "Mina", "field": "city", "value": "Rome", "operation": "write"},
+                {"person": "Mina", "field": "city", "value": "Oslo", "operation": "write"},
+            ],
+            "probe": {"person": "Mina", "field": "city"}, "expected": "Oslo",
+        }))
+        minimized = subprocess.run(
+            [sys.executable, "-m", "faultline", "minimize", "--scenario", str(scenario),
+             "--program", str(stale), "--program-protocol", "continuity"],
+            cwd=root, text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(minimized.returncode, 0, minimized.stderr)
+        report = json.loads(minimized.stdout)
+        self.assertEqual(report["target_status"], "fail")
+        self.assertEqual(report["removed_events"], 1)
+        self.assertEqual(report["adapter"]["protocol"], "continuity_v2")
+
     def test_receipt_identifies_the_executable_bytes(self):
         root = Path(__file__).resolve().parents[1]
         program = root / "examples/sqlite_memory.py"
