@@ -49,7 +49,7 @@ Each store instance owns one SQLite connection and must remain in its creating t
 
 ## Repeated trials
 
-`repeat` records every recognized version one outcome, latency, and declared cost across identical repeated calls. It rejects a series with an unknown status or more than one scenario fingerprint. Only pass and fail outcomes form the reported quality rate. Unknown answers and execution errors remain visible but are not silently counted as quality failures. The Wilson interval describes sampling uncertainty only when trials are independent. Deterministic synthetic fixtures do not satisfy that assumption and their interval is not evidence of model quality. `compare_repairs` refuses to compare baseline and candidate runs whose scenario fingerprints differ.
+`repeat` records every recognized version one outcome, latency, and declared cost across identical repeated calls. It rejects a series with an unknown status or more than one scenario fingerprint. Only pass and fail outcomes form the reported quality rate. Unknown answers and execution errors remain visible but are not silently counted as quality failures. The Wilson interval describes sampling uncertainty only when trials are independent. Deterministic synthetic fixtures do not satisfy that assumption and their interval is not evidence of model quality. `compare_repairs` alternates one isolated baseline and candidate attempt per round and refuses to compare different scenario fingerprints.
 
 ## Held out repair checks
 

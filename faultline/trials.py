@@ -34,18 +34,55 @@ def repeat(
     clock: Callable[[], float] = monotonic,
 ) -> TrialSummary:
     """Runs a supplied evaluation repeatedly without changing its input."""
+    _validate_attempts(attempts)
+    samples = [_evaluate_once(evaluate, clock) for _ in range(attempts)]
+    return _summarize(samples, attempts)
+
+
+def compare_repairs(
+    baseline: Callable[[], dict],
+    candidate: Callable[[], dict],
+    attempts: int,
+    clock: Callable[[], float] = monotonic,
+) -> RepairComparison:
+    """Interleaves isolated evaluations before comparing identical scenarios."""
+    _validate_attempts(attempts)
+    baseline_samples = []
+    candidate_samples = []
+    for _ in range(attempts):
+        baseline_samples.append(_evaluate_once(baseline, clock))
+        candidate_samples.append(_evaluate_once(candidate, clock))
+    baseline_summary = _summarize(baseline_samples, attempts)
+    candidate_summary = _summarize(candidate_samples, attempts)
+    if baseline_summary.fingerprints != candidate_summary.fingerprints:
+        raise ValueError("baseline and candidate must use identical scenario fingerprints")
+    if baseline_summary.pass_rate is None or candidate_summary.pass_rate is None:
+        delta = None
+    else:
+        delta = candidate_summary.pass_rate - baseline_summary.pass_rate
+    return RepairComparison(baseline_summary, candidate_summary, delta)
+
+
+def _validate_attempts(attempts: int) -> None:
     if not 1 <= attempts <= 10_000:
         raise ValueError("attempts must be between 1 and 10000")
+
+
+def _evaluate_once(evaluate: Callable[[], dict], clock: Callable[[], float]) -> tuple[dict, float]:
+    started = clock()
+    evidence = evaluate()
+    elapsed = clock() - started
+    if elapsed < 0:
+        raise ValueError("clock moved backwards")
+    return evidence, elapsed
+
+
+def _summarize(samples: list[tuple[dict, float]], attempts: int) -> TrialSummary:
     outcomes: dict[str, int] = {}
     fingerprints: set[str] = set()
     latencies: list[float] = []
     total_cost = 0
-    for _ in range(attempts):
-        started = clock()
-        evidence = evaluate()
-        elapsed = clock() - started
-        if elapsed < 0:
-            raise ValueError("clock moved backwards")
+    for evidence, elapsed in samples:
         if not isinstance(evidence, dict):
             raise TypeError("evaluation must return an evidence object")
         status = evidence.get("status")
@@ -77,24 +114,6 @@ def repeat(
         rate,
         _wilson_interval(passes, scored) if scored else None,
     )
-
-
-def compare_repairs(
-    baseline: Callable[[], dict],
-    candidate: Callable[[], dict],
-    attempts: int,
-    clock: Callable[[], float] = monotonic,
-) -> RepairComparison:
-    """Compares two evaluators only when they ran the identical scenario set."""
-    baseline_summary = repeat(baseline, attempts, clock)
-    candidate_summary = repeat(candidate, attempts, clock)
-    if baseline_summary.fingerprints != candidate_summary.fingerprints:
-        raise ValueError("baseline and candidate must use identical scenario fingerprints")
-    if baseline_summary.pass_rate is None or candidate_summary.pass_rate is None:
-        delta = None
-    else:
-        delta = candidate_summary.pass_rate - baseline_summary.pass_rate
-    return RepairComparison(baseline_summary, candidate_summary, delta)
 
 
 def _percentile(values: list[float], percentile: float) -> float:

@@ -534,6 +534,23 @@ class TrialTests(unittest.TestCase):
                 1,
             )
 
+    def test_repair_comparison_interleaves_attempts(self):
+        order = []
+
+        def baseline():
+            order.append("baseline")
+            return self.evidence("pass")
+
+        def candidate():
+            order.append("candidate")
+            return self.evidence("pass")
+
+        compare_repairs(baseline, candidate, 3)
+        self.assertEqual(
+            order,
+            ["baseline", "candidate", "baseline", "candidate", "baseline", "candidate"],
+        )
+
     def test_repeat_rejects_a_clock_regression(self):
         ticks = iter([1, 0])
         with self.assertRaisesRegex(ValueError, "clock moved backwards"):
