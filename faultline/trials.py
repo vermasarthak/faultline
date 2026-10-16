@@ -58,6 +58,8 @@ def repeat(
         fingerprints.add(fingerprint)
         latencies.append(elapsed)
         total_cost += cost
+    if len(fingerprints) != 1:
+        raise ValueError("repeated trials must use one stable scenario fingerprint")
     passes = outcomes.get("pass", 0)
     failures = outcomes.get("fail", 0)
     scored = passes + failures

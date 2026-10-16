@@ -485,6 +485,14 @@ class TrialTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "clock moved backwards"):
             repeat(lambda: self.evidence("pass"), 1, lambda: next(ticks))
 
+    def test_repeat_rejects_mixed_scenario_fingerprints(self):
+        results = iter([
+            self.evidence("pass"),
+            self.evidence("fail", fingerprint="b" * 64),
+        ])
+        with self.assertRaisesRegex(ValueError, "one stable scenario fingerprint"):
+            repeat(lambda: next(results), 2)
+
     def test_repeat_rejects_boolean_costs_and_malformed_fingerprints(self):
         with self.assertRaisesRegex(ValueError, "cost_microusd"):
             repeat(lambda: self.evidence("pass", cost=True), 1)
