@@ -607,6 +607,30 @@ class MinimizationTests(unittest.TestCase):
         result = minimize_failure(scenario, evaluate)
         self.assertEqual(result.removed_events, 0)
 
+    def test_removes_an_interacting_group_that_greedy_reduction_misses(self):
+        scenario = Scenario(
+            "interacting distractors",
+            (
+                Event("Nia", "city", "Berlin"),
+                Event("Noor", "city", "Paris"),
+                Event("Mina", "city", "Rome"),
+                Event("Mina", "city", "Oslo"),
+            ),
+            Probe("Mina", "city"),
+            "Oslo",
+        )
+
+        def evaluate(item):
+            people = {event.person for event in item.events}
+            return {"status": "fail" if ("Nia" in people) == ("Noor" in people) else "pass"}
+
+        result = minimize_failure(scenario, evaluate)
+        self.assertEqual(result.removed_events, 2)
+        self.assertEqual(
+            result.minimized.events,
+            (Event("Mina", "city", "Rome"), Event("Mina", "city", "Oslo")),
+        )
+
     def test_rejects_a_scenario_that_does_not_fail_before_reduction(self):
         scenario = Scenario(
             "passing",

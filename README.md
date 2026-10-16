@@ -51,7 +51,7 @@ The development and held out manifests partition the synthetic fixtures by canon
 
 ## Failure minimization
 
-`minimize_failure` removes events in deterministic source order only when the same failing status reproduces. It retains every event that directly targets the probe person and field, so corrections and deletion history for the queried fact remain intact. It does not infer hidden semantic dependencies across unrelated fields. The reduction is an investigation aid, not a proof of root cause.
+`minimize_failure` uses bounded deterministic delta debugging and removes groups as well as individual events when the same failing status reproduces. It retains every event that directly targets the probe person and field, so corrections and deletion history for the queried fact remain intact. The result is one minimal under its tested removals, not proof of a globally smallest cause or root cause.
 
 ## Scope
 
