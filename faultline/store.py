@@ -58,8 +58,10 @@ class EvidenceStore:
     ) -> StoredRun:
         payload = _validated_evidence(evidence)
         _fingerprint(content_fingerprint, "content_fingerprint")
-        run_id = run_id or str(uuid4())
-        recorded_at = recorded_at or datetime.now(timezone.utc).isoformat()
+        run_id = str(uuid4()) if run_id is None else run_id
+        recorded_at = datetime.now(timezone.utc).isoformat() if recorded_at is None else recorded_at
+        _run_id(run_id)
+        _recorded_at(recorded_at)
         stored = StoredRun(run_id, recorded_at, content_fingerprint, payload)
         with self.write_transaction() as connection:
             _insert_run(connection, stored)
@@ -223,6 +225,8 @@ def _insert_run(connection: sqlite3.Connection, stored: StoredRun) -> None:
 
 def _stored_run(row: sqlite3.Row) -> StoredRun:
     evidence = _load_evidence(row["evidence_json"])
+    _run_id(row["run_id"], "stored run_id")
+    _recorded_at(row["recorded_at"], "stored recorded_at")
     _fingerprint(row["content_fingerprint"], "stored content_fingerprint")
     if row["canonical_fingerprint"] != evidence["fingerprint"]:
         raise ValueError("stored receipt canonical fingerprint is corrupt")
@@ -352,3 +356,19 @@ def _fingerprint(value: object, name: str) -> None:
         int(value, 16)
     except ValueError as error:
         raise ValueError(f"{name} must be a SHA 256 hexadecimal fingerprint") from error
+
+
+def _run_id(value: object, name: str = "run_id") -> None:
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"{name} must be a nonempty string")
+
+
+def _recorded_at(value: object, name: str = "recorded_at") -> None:
+    if not isinstance(value, str):
+        raise ValueError(f"{name} must be a timezone aware ISO 8601 timestamp")
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as error:
+        raise ValueError(f"{name} must be a timezone aware ISO 8601 timestamp") from error
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise ValueError(f"{name} must be a timezone aware ISO 8601 timestamp")

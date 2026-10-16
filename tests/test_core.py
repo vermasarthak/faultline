@@ -547,6 +547,22 @@ os._exit(0)
         with self.assertRaisesRegex(ValueError, "fingerprint"):
             store.record(self.evidence, "not a fingerprint")
 
+    def test_store_rejects_invalid_receipt_identity_and_timestamp(self):
+        store = EvidenceStore(self.path)
+        self.addCleanup(store.close)
+        for run_id in ("", "   ", 1):
+            with self.subTest(run_id=run_id), self.assertRaisesRegex(ValueError, "run_id"):
+                store.record(self.evidence, self.content_fingerprint, run_id=run_id)
+        for recorded_at in ("", "not a timestamp", "2026-10-16T00:00:00", 1):
+            with self.subTest(recorded_at=recorded_at), self.assertRaisesRegex(
+                ValueError, "recorded_at"
+            ):
+                store.record(
+                    self.evidence, self.content_fingerprint,
+                    run_id="valid", recorded_at=recorded_at,
+                )
+        self.assertEqual(store.verify_integrity(), 0)
+
     def test_store_rejects_malformed_evidence_fields(self):
         store = EvidenceStore(self.path)
         self.addCleanup(store.close)
@@ -670,6 +686,21 @@ os._exit(0)
             store.get("metadata")
         with self.assertRaisesRegex(ValueError, "stored receipt status is corrupt"):
             store.verify_integrity()
+
+    def test_corrupt_receipt_identity_metadata_is_explicitly_detected(self):
+        for field, value, message in (
+            ("run_id", "", "stored run_id"),
+            ("recorded_at", "not a timestamp", "stored recorded_at"),
+        ):
+            with self.subTest(field=field):
+                path = Path(self.directory.name) / f"{field}.db"
+                store = EvidenceStore(path)
+                store.record(self.evidence, self.content_fingerprint, run_id="metadata")
+                with store.write_transaction() as connection:
+                    connection.execute(f"UPDATE runs SET {field} = ?", (value,))
+                with self.assertRaisesRegex(ValueError, message):
+                    store.verify_integrity()
+                store.close()
 
 
 class TrialTests(unittest.TestCase):
