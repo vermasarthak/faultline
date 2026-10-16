@@ -3,6 +3,7 @@ import subprocess
 import sys
 import json
 import weakref
+from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -149,6 +150,27 @@ class ScenarioLoadingTests(unittest.TestCase):
         path.write_bytes(b"x" * (MAX_SCENARIO_BYTES + 1))
         with self.assertRaisesRegex(ValueError, "scenario exceeds"):
             load(path)
+
+    def test_schema_type_matrix_never_raises_an_internal_type_error(self):
+        base = {
+            "version": 2, "name": "case",
+            "events": [{"person": "Mina", "field": "city", "operation": "write", "value": "Oslo"}],
+            "probe": {"person": "Mina", "field": "city"}, "expected": "Oslo",
+        }
+        values = (None, True, False, 0, 1.0, "", [], {}, ["write"], {"x": 1})
+        for location in ("version", "name", "events", "probe", "expected",
+                         "person", "field", "operation", "value"):
+            for value in values:
+                payload = deepcopy(base)
+                if location in {"person", "field", "operation", "value"}:
+                    payload["events"][0][location] = value
+                else:
+                    payload[location] = value
+                with self.subTest(location=location, value=value):
+                    try:
+                        load(self.write(json.dumps(payload)))
+                    except ValueError:
+                        pass
 
 
 class AdapterExecutionTests(unittest.TestCase):
@@ -704,6 +726,21 @@ class HeldOutTests(unittest.TestCase):
         manifest.write_text('{"version":1,"name":"set","scenarios":["case.json"]}')
         with self.assertRaisesRegex(ValueError, "escapes fixture directory"):
             load_manifest(manifest, root)
+
+    def test_manifest_type_matrix_never_raises_an_internal_type_error(self):
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        manifest = Path(directory.name) / "manifest.json"
+        base = {"version": 1, "name": "set", "scenarios": ["deletion.json"]}
+        for field in base:
+            for value in (None, True, False, 0, 1.0, "", [], {}, ["deletion.json"]):
+                payload = {**base, field: value}
+                manifest.write_text(json.dumps(payload))
+                with self.subTest(field=field, value=value):
+                    try:
+                        load_manifest(manifest, self.examples)
+                    except (OSError, ValueError):
+                        pass
 
     def test_manifest_read_is_bounded(self):
         directory = TemporaryDirectory()

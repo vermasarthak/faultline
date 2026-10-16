@@ -6,7 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
-from time import monotonic
+from time import monotonic, sleep
 import unittest
 
 from faultline.core import Event, Probe, Scenario
@@ -74,6 +74,38 @@ class ProcessAdapterTests(unittest.TestCase):
         result = run_bounded(scenario, lambda: ProcessSession(program), Budget(2, 0, 2))
         self.assertEqual(result["status"], "invalid_response")
         self.assertFalse(marker.exists())
+
+    def test_large_valid_request_is_transferred_without_pipe_deadlock(self):
+        program = self.program(
+            "import json, sys\n"
+            "request = json.load(sys.stdin)\n"
+            "print(json.dumps({'version': 1, 'value': str(len(request['events'][0]['value'])), "
+            "'cost_microusd': 0}))\n"
+        )
+        scenario = Scenario(
+            "large", (Event("Mina", "note", "x" * (200 * 1024)),),
+            Probe("Mina", "note"), str(200 * 1024),
+        )
+        result = run_bounded(scenario, lambda: ProcessSession(program), Budget(2, 0, 2))
+        self.assertEqual(result["status"], "pass")
+
+    def test_timeout_terminates_descendant_in_the_process_group(self):
+        ready = self.root / "ready"
+        escaped = self.root / "escaped"
+        child = (
+            "import time; from pathlib import Path; "
+            f"time.sleep(2); Path({str(escaped)!r}).write_text('escaped')"
+        )
+        program = self.program(
+            "import subprocess, sys, time\n"
+            f"subprocess.Popen([sys.executable, '-c', {child!r}])\n"
+            f"open({str(ready)!r}, 'w').close()\n"
+            "time.sleep(5)\n"
+        )
+        self.assertEqual(self.evaluate(program, timeout=1)["status"], "timeout")
+        self.assertTrue(ready.exists())
+        sleep(1.2)
+        self.assertFalse(escaped.exists())
 
     def test_malformed_duplicate_and_expensive_responses_are_distinct(self):
         for body, expected in (
