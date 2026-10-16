@@ -16,7 +16,7 @@ def read_limited(path: str | Path, byte_limit: int, document_name: str) -> bytes
 def decode_object(raw: bytes, document_name: str) -> object:
     try:
         return json.loads(raw, object_pairs_hook=_unique_object)
-    except json.JSONDecodeError as error:
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
         raise ValueError(f"{document_name} is not valid JSON") from error
 
 

@@ -92,6 +92,14 @@ class ScenarioLoadingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "valid JSON"):
             load(malformed)
 
+    def test_rejects_non_utf_eight_json_as_invalid_document(self):
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = Path(directory.name) / "invalid.json"
+        path.write_bytes(b"\xff")
+        with self.assertRaisesRegex(ValueError, "scenario is not valid JSON"):
+            load(path)
+
     def test_rejects_duplicate_root_and_nested_json_keys(self):
         duplicate_root = self.write(
             '{"version":1,"name":"x","name":"y","events":[{"person":"Mina","field":"city","value":"Rome"}],"probe":{"person":"Mina","field":"city"},"expected":"Rome"}'
