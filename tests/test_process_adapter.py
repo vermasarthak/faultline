@@ -105,3 +105,47 @@ class ProcessAdapterTests(unittest.TestCase):
     def test_example_sqlite_program_handles_correction(self):
         program = Path(__file__).resolve().parents[1] / "examples/sqlite_memory.py"
         self.assertEqual(self.evaluate(program)["status"], "pass")
+
+    def test_external_program_can_be_swept_and_its_failure_minimized(self):
+        root = Path(__file__).resolve().parents[1]
+        sqlite_program = root / "examples/sqlite_memory.py"
+        sweep = subprocess.run(
+            [
+                sys.executable, "-m", "faultline", "sweep", "--program", str(sqlite_program),
+                "--seed", "7", "--scenarios", "20", "--max-events", "10",
+                "--max-operations", "11",
+            ],
+            cwd=root, text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(sweep.returncode, 0, sweep.stderr)
+        self.assertEqual(json.loads(sweep.stdout)["outcomes"], {"pass": 20})
+
+        stale_program = self.program(
+            "import json, sys\n"
+            "request = json.load(sys.stdin)\n"
+            "probe = request['probe']\n"
+            "values = [e['value'] for e in request['events'] if "
+            "e['person'] == probe['person'] and e['field'] == probe['field']]\n"
+            "print(json.dumps({'version': 1, 'value': values[0] if values else None, "
+            "'cost_microusd': 0}))\n"
+        )
+        scenario = self.root / "scenario.json"
+        scenario.write_text(json.dumps({
+            "version": 2, "name": "distracted correction",
+            "events": [
+                {"person": "Other", "field": "city", "value": "Paris", "operation": "write"},
+                {"person": "Mina", "field": "city", "value": "Rome", "operation": "write"},
+                {"person": "Mina", "field": "city", "value": "Oslo", "operation": "write"},
+            ],
+            "probe": {"person": "Mina", "field": "city"}, "expected": "Oslo",
+        }))
+        minimized = subprocess.run(
+            [sys.executable, "-m", "faultline", "minimize", "--scenario", str(scenario),
+             "--program", str(stale_program)],
+            cwd=root, text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(minimized.returncode, 0, minimized.stderr)
+        result = json.loads(minimized.stdout)
+        self.assertEqual(result["target_status"], "fail")
+        self.assertEqual(result["removed_events"], 1)
+        self.assertEqual(len(result["minimized"]["events"]), 2)

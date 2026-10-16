@@ -62,7 +62,8 @@ def main(argv: Sequence[str]) -> int:
     compare_parser.add_argument("--fail-on-regression", action="store_true")
     minimize_parser = commands.add_parser("minimize", help="reduce a reproducible synthetic failure")
     minimize_parser.add_argument("--scenario", required=True, type=Path)
-    minimize_parser.add_argument("--adapter", default="stale")
+    minimize_parser.add_argument("--adapter")
+    minimize_parser.add_argument("--program", type=Path)
     minimize_parser.add_argument("--max-evaluations", type=int, default=1_000)
     minimize_parser.add_argument("--timeout-seconds", type=float, default=5)
     minimize_parser.add_argument("--max-operations", type=int, default=100)
@@ -72,7 +73,8 @@ def main(argv: Sequence[str]) -> int:
     materialize_parser.add_argument("--index", type=int, required=True)
     materialize_parser.add_argument("--max-events", type=int, required=True)
     sweep_parser = commands.add_parser("sweep", help="run generated synthetic memory histories")
-    sweep_parser.add_argument("--adapter", default="correction")
+    sweep_parser.add_argument("--adapter")
+    sweep_parser.add_argument("--program", type=Path)
     sweep_parser.add_argument("--seed", type=int, default=1)
     sweep_parser.add_argument("--scenarios", type=int, default=100)
     sweep_parser.add_argument("--max-events", type=int, default=20)
@@ -213,13 +215,14 @@ def _compare(args) -> dict:
 def _minimize(args) -> dict:
     document = load(args.scenario)
     budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
+    factory = _adapter_factory(args.adapter, args.program, "stale")
     result = minimize_failure(
         document.scenario,
-        lambda scenario: run_bounded(scenario, _adapter_factory(args.adapter), budget),
+        lambda scenario: run_bounded(scenario, factory, budget),
         args.max_evaluations,
     )
     return {
-        "data_source": "synthetic scenario",
+        "data_source": "synthetic scenario with local executable" if args.program else "synthetic scenario",
         "content_fingerprint": document.content_fingerprint,
         "budget": asdict(budget),
         "target_status": result.target_status,
@@ -237,7 +240,7 @@ def _sweep(args) -> dict:
         raise ValueError("max_events must be below max_operations to reserve a probe operation")
     scenarios = generate_scenarios(args.seed, args.scenarios, args.max_events)
     budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
-    factory = _adapter_factory(args.adapter)
+    factory = _adapter_factory(args.adapter, args.program, "correction")
     outcomes: dict[str, int] = {}
     failures = []
     for index, scenario in enumerate(scenarios):
@@ -254,7 +257,10 @@ def _sweep(args) -> dict:
                 }
             )
     return {
-        "data_source": "generated synthetic scenarios",
+        "data_source": (
+            "generated synthetic scenarios with local executable"
+            if args.program else "generated synthetic scenarios"
+        ),
         "generator_version": GENERATOR_VERSION,
         "seed": args.seed,
         "scenarios": args.scenarios,
