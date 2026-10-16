@@ -54,6 +54,7 @@ def main(argv: Sequence[str]) -> int:
     compare_parser.add_argument("--timeout-seconds", type=float, default=5)
     compare_parser.add_argument("--max-operations", type=int, default=100)
     compare_parser.add_argument("--max-cost-microusd", type=int, default=0)
+    compare_parser.add_argument("--fail-on-regression", action="store_true")
     minimize_parser = commands.add_parser("minimize", help="reduce a reproducible synthetic failure")
     minimize_parser.add_argument("--scenario", required=True, type=Path)
     minimize_parser.add_argument("--adapter", default="stale")
@@ -97,6 +98,8 @@ def main(argv: Sequence[str]) -> int:
     except (OSError, ValueError) as error:
         parser.error(str(error))
     print(json.dumps(report, sort_keys=True, indent=2))
+    if args.command == "compare" and args.fail_on_regression and report["regression_count"]:
+        return 1
     return 0
 
 
@@ -152,22 +155,27 @@ def _compare(args) -> dict:
         budget,
         args.attempts,
     )
+    comparisons = [
+        {
+            "scenario": item.scenario,
+            "fingerprint": item.fingerprint,
+            "baseline": _summary(item.comparison.baseline),
+            "candidate": _summary(item.comparison.candidate),
+            "pass_rate_delta": item.comparison.pass_rate_delta,
+        }
+        for item in report.comparisons
+    ]
     return {
         "data_source": "synthetic manifests",
         "development_manifest": suite.development.name,
         "held_out_manifest": suite.held_out.name,
         "budget": asdict(report.budget),
         "attempts": args.attempts,
-        "comparisons": [
-            {
-                "scenario": item.scenario,
-                "fingerprint": item.fingerprint,
-                "baseline": _summary(item.comparison.baseline),
-                "candidate": _summary(item.comparison.candidate),
-                "pass_rate_delta": item.comparison.pass_rate_delta,
-            }
-            for item in report.comparisons
-        ],
+        "regression_count": sum(
+            item["pass_rate_delta"] is not None and item["pass_rate_delta"] < 0
+            for item in comparisons
+        ),
+        "comparisons": comparisons,
     }
 
 

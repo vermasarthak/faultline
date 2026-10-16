@@ -803,6 +803,7 @@ class CliTests(unittest.TestCase):
                 "correction",
                 "--attempts",
                 "2",
+                "--fail-on-regression",
             ],
             cwd=self.root,
             text=True,
@@ -815,8 +816,33 @@ class CliTests(unittest.TestCase):
         self.assertEqual(report["development_manifest"], "development")
         self.assertEqual(report["held_out_manifest"], "held out")
         self.assertEqual(report["attempts"], 2)
+        self.assertEqual(report["regression_count"], 0)
         self.assertEqual([item["scenario"] for item in report["comparisons"]], ["invented fact", "deletion"])
         self.assertEqual(report["comparisons"][1]["pass_rate_delta"], 1.0)
+
+        regression = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "faultline",
+                "compare",
+                "--development-manifest",
+                str(self.root / "examples" / "manifests" / "development.json"),
+                "--held-out-manifest",
+                str(self.root / "examples" / "manifests" / "held-out.json"),
+                "--baseline",
+                "correction",
+                "--candidate",
+                "stale",
+                "--fail-on-regression",
+            ],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(regression.returncode, 1, regression.stderr)
+        self.assertEqual(json.loads(regression.stdout)["regression_count"], 1)
 
     def test_minimize_reports_a_smaller_synthetic_counterexample(self):
         scenario = Path(self.directory.name) / "distractor.json"
