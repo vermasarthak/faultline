@@ -2,6 +2,7 @@ import unittest
 import subprocess
 import sys
 import json
+import weakref
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -14,7 +15,7 @@ from faultline.store import EvidenceStore
 from faultline.trials import compare_repairs, repeat
 from faultline.heldout import MAX_MANIFEST_BYTES, compare_held_out, load_manifest, load_suite
 from faultline.minimize import minimize_failure
-from faultline.generate import generate_scenarios
+from faultline.generate import generate_scenarios, iter_scenarios
 
 
 class EvidenceTests(unittest.TestCase):
@@ -303,11 +304,20 @@ class GeneratedScenarioTests(unittest.TestCase):
     def test_generated_histories_are_deterministic_and_match_the_reference_oracle(self):
         scenarios = generate_scenarios(17, 100, 12)
         self.assertEqual(scenarios, generate_scenarios(17, 100, 12))
+        self.assertEqual(scenarios, tuple(iter_scenarios(17, 100, 12)))
         self.assertTrue(all(run(scenario, CorrectionMemory)["status"] == "pass" for scenario in scenarios))
         self.assertGreater(
             sum(run(scenario, StaleMemory)["status"] == "fail" for scenario in scenarios),
             0,
         )
+
+    def test_stream_does_not_retain_completed_scenarios(self):
+        stream = iter_scenarios(17, 10_000, 2)
+        first = next(stream)
+        reference = weakref.ref(first)
+        del first
+        self.assertIsNone(reference())
+        self.assertEqual(next(stream).name, "generated state 1")
 
     def test_generator_rejects_unbounded_inputs(self):
         with self.assertRaisesRegex(ValueError, "seed"):

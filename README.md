@@ -24,7 +24,7 @@ The local CLI emits JSON only. `run` executes a synthetic scenario with a declar
 
 Use `compare --fail-on-regression` in a local check or CI job to emit the complete held out report and return a nonzero status when a candidate has a lower scored pass rate, fewer scored trials, or an inconclusive comparison on any held out scenario. Each comparison reports its verdict. This gate fails closed when an adapter outage removes the evidence needed to compare quality. It is an opt in guard, not a claim about real model quality.
 
-`sweep` generates bounded write and delete histories from a declared seed and independent state oracle, then evaluates one adapter. Its output records the generator version, seed, bounds, and failure fingerprints so the run is reproducible. `materialize` turns a sweep index back into a version two scenario file for `minimize`. It is synthetic property coverage, not model coverage.
+`sweep` streams bounded write and delete histories from a declared seed and independent state oracle, then evaluates one adapter. Its output records the generator version, seed, bounds, and failure fingerprints so the run is reproducible. `materialize` replays the stream to turn a sweep index back into a version two scenario file for `minimize` without retaining earlier scenarios. It is synthetic property coverage, not model coverage.
 
 The demo teaches an assistant that Mina lives in Rome, corrects it to Oslo, and asks for the current city. The stale fixture fails. The correction fixture passes. Both outputs include the scenario fingerprint and observed response.
 

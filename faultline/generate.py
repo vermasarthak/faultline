@@ -1,6 +1,7 @@
 """Deterministic synthetic memory histories with an independent state oracle."""
 
 from random import Random
+from typing import Iterator
 
 from .core import Event, Probe, Scenario
 
@@ -11,12 +12,16 @@ _FIELDS = ("city", "language", "role")
 
 
 def generate_scenarios(seed: int, count: int, max_events: int) -> tuple[Scenario, ...]:
-    """Generates bounded write and delete histories reproducibly from one seed."""
+    """Materializes bounded histories for callers that need a tuple."""
+    return tuple(iter_scenarios(seed, count, max_events))
+
+
+def iter_scenarios(seed: int, count: int, max_events: int) -> Iterator[Scenario]:
+    """Yields reproducible histories without retaining the whole sweep."""
     _bounded_integer(seed, "seed", minimum=0, maximum=2**63 - 1)
     _bounded_integer(count, "count", minimum=1, maximum=10_000)
     _bounded_integer(max_events, "max_events", minimum=1, maximum=1_000)
     random = Random(seed)
-    scenarios = []
     for scenario_index in range(count):
         state: dict[tuple[str, str], str] = {}
         events = []
@@ -33,15 +38,12 @@ def generate_scenarios(seed: int, count: int, max_events: int) -> tuple[Scenario
                 state[key] = value
         person = random.choice(_PEOPLE)
         field = random.choice(_FIELDS)
-        scenarios.append(
-            Scenario(
-                f"generated state {scenario_index}",
-                tuple(events),
-                Probe(person, field),
-                state.get((person, field)),
-            )
+        yield Scenario(
+            f"generated state {scenario_index}",
+            tuple(events),
+            Probe(person, field),
+            state.get((person, field)),
         )
-    return tuple(scenarios)
 
 
 def _bounded_integer(value: object, name: str, minimum: int, maximum: int) -> None:

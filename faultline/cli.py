@@ -4,6 +4,7 @@ import argparse
 from dataclasses import asdict
 from hashlib import sha256
 import json
+from itertools import islice
 from pathlib import Path
 import platform
 from time import perf_counter
@@ -12,7 +13,7 @@ from typing import Sequence
 from .__main__ import CorrectionMemory, StaleMemory
 from .core import Event, Probe, Scenario, run
 from .execution import Budget, Recall, run_bounded
-from .generate import GENERATOR_VERSION, generate_scenarios
+from .generate import GENERATOR_VERSION, iter_scenarios
 from .heldout import compare_held_out, load_suite
 from .minimize import minimize_failure
 from .process_adapter import ProcessSession
@@ -267,7 +268,7 @@ def _sweep(args) -> dict:
         raise ValueError("max_failures must be between 1 and 1000")
     if args.max_events >= args.max_operations:
         raise ValueError("max_events must be below max_operations to reserve a probe operation")
-    scenarios = generate_scenarios(args.seed, args.scenarios, args.max_events)
+    scenarios = iter_scenarios(args.seed, args.scenarios, args.max_events)
     budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
     adapter = _adapter_identity(args.adapter, args.program, "correction")
     factory = _adapter_factory(args.adapter, args.program, "correction")
@@ -307,7 +308,7 @@ def _sweep(args) -> dict:
 def _materialize(args) -> dict:
     if not 0 <= args.index < 10_000:
         raise ValueError("index must be between 0 and 9999")
-    scenario = generate_scenarios(args.seed, args.index + 1, args.max_events)[-1]
+    scenario = next(islice(iter_scenarios(args.seed, args.index + 1, args.max_events), args.index, None))
     return {"version": 2, **asdict(scenario)}
 
 
