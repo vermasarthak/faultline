@@ -41,6 +41,18 @@ class EvidenceTests(unittest.TestCase):
         run(first, CorrectionMemory)
         self.assertEqual(run(second, CorrectionMemory)["status"], "unknown")
 
+    def test_programmatic_scenarios_enforce_the_document_contract(self):
+        with self.assertRaisesRegex(ValueError, "event.value"):
+            Event("Mina", "city", None)
+        with self.assertRaisesRegex(ValueError, "event.operation"):
+            Event("Mina", "city", "Oslo", "replace")
+        with self.assertRaisesRegex(ValueError, "must be null"):
+            Event("Mina", "city", "Oslo", "delete")
+        with self.assertRaisesRegex(TypeError, "tuple"):
+            Scenario("mutable", [Event("Mina", "city", "Oslo")], Probe("Mina", "city"), "Oslo")
+        with self.assertRaisesRegex(ValueError, "scenario.expected"):
+            Scenario("empty answer", (), Probe("Mina", "city"), "")
+
 
 class ScenarioLoadingTests(unittest.TestCase):
     def write(self, content):
