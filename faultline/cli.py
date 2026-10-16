@@ -77,6 +77,7 @@ def main(argv: Sequence[str]) -> int:
     materialize_parser.add_argument("--seed", type=int, required=True)
     materialize_parser.add_argument("--index", type=int, required=True)
     materialize_parser.add_argument("--max-events", type=int, required=True)
+    materialize_parser.add_argument("--generator-version", type=int, choices=(1, 2), default=GENERATOR_VERSION)
     sweep_parser = commands.add_parser("sweep", help="run generated synthetic memory histories")
     sweep_parser.add_argument("--adapter")
     sweep_parser.add_argument("--program", type=Path)
@@ -84,6 +85,7 @@ def main(argv: Sequence[str]) -> int:
     sweep_parser.add_argument("--seed", type=int, default=1)
     sweep_parser.add_argument("--scenarios", type=int, default=100)
     sweep_parser.add_argument("--max-events", type=int, default=20)
+    sweep_parser.add_argument("--generator-version", type=int, choices=(1, 2), default=GENERATOR_VERSION)
     sweep_parser.add_argument("--max-failures", type=int, default=20)
     sweep_parser.add_argument("--timeout-seconds", type=float, default=5)
     sweep_parser.add_argument("--max-operations", type=int, default=100)
@@ -291,17 +293,21 @@ def _sweep(args) -> dict:
         raise ValueError("max_failures must be between 1 and 1000")
     if args.max_events >= args.max_operations:
         raise ValueError("max_events must be below max_operations to reserve a probe operation")
-    scenarios = iter_scenarios(args.seed, args.scenarios, args.max_events)
+    scenarios = iter_scenarios(args.seed, args.scenarios, args.max_events, args.generator_version)
     budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
     _require_continuity_program(args.program_protocol, args.program)
     adapter = _adapter_identity(args.adapter, args.program, "correction", args.program_protocol)
     factory = _adapter_factory(args.adapter, args.program, "correction", args.program_protocol)
     outcomes: dict[str, int] = {}
+    expected_state_outcomes: dict[str, dict[str, int]] = {"present": {}, "absent": {}}
     failures = []
     for index, scenario in enumerate(scenarios):
         evidence = run_bounded(scenario, factory, budget)
         status = evidence["status"]
         outcomes[status] = outcomes.get(status, 0) + 1
+        expected_state = "absent" if scenario.expected is None else "present"
+        state_outcomes = expected_state_outcomes[expected_state]
+        state_outcomes[status] = state_outcomes.get(status, 0) + 1
         if status != "pass" and len(failures) < args.max_failures:
             failures.append(
                 {
@@ -309,6 +315,7 @@ def _sweep(args) -> dict:
                     "scenario": scenario.name,
                     "fingerprint": scenario.fingerprint(),
                     "status": status,
+                    "expected_state": expected_state,
                 }
             )
     _check_program_unchanged(args.program, adapter)
@@ -317,13 +324,14 @@ def _sweep(args) -> dict:
             "generated synthetic scenarios with local executable"
             if args.program else "generated synthetic scenarios"
         ),
-        "generator_version": GENERATOR_VERSION,
+        "generator_version": args.generator_version,
         "seed": args.seed,
         "scenarios": args.scenarios,
         "max_events": args.max_events,
         "budget": asdict(budget),
         "adapter": adapter,
         "outcomes": outcomes,
+        "expected_state_outcomes": expected_state_outcomes,
         "failure_count": args.scenarios - outcomes.get("pass", 0),
         "failures": failures,
     }
@@ -332,7 +340,10 @@ def _sweep(args) -> dict:
 def _materialize(args) -> dict:
     if not 0 <= args.index < 10_000:
         raise ValueError("index must be between 0 and 9999")
-    scenario = next(islice(iter_scenarios(args.seed, args.index + 1, args.max_events), args.index, None))
+    scenario = next(islice(
+        iter_scenarios(args.seed, args.index + 1, args.max_events, args.generator_version),
+        args.index, None,
+    ))
     return {"version": 2, **asdict(scenario)}
 
 

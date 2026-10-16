@@ -23,3 +23,7 @@ The reducer may remove an event only if the same failure reproduces. It always p
 ## Test continuity separately from snapshot recall
 
 The snapshot protocol is cheap and useful for checking final state semantics, but a program can pass by rebuilding its memory from the complete history supplied with every query. Continuity instead runs one process per observation and recall and supplies only a trial scoped directory for shared state. This exposes lost state across process restarts. A persistent remote service might use a separate store outside that directory, so the adapter must isolate its own trial data and cleanup. The extra process launches make continuity slower; use it for durability checks rather than harness throughput measurements.
+
+## Balance generated recall and absence probes
+
+The first generator sampled a probe uniformly from twelve person and field pairs. Sparse histories therefore favored expected absence, allowing an adapter that always returned unknown to pass many cases. Generator version two alternates between present and absent expected states, favoring corrected or deleted keys when available. If an event history cannot provide the required state, it changes its final event and recomputes the oracle. This is a deliberate coverage policy rather than a model quality estimate. The original generator remains selectable by version so old sweep fingerprints can still be reproduced. Revisit this policy when adding richer memory semantics or representative external evaluation data.

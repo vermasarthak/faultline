@@ -350,6 +350,24 @@ class GeneratedScenarioTests(unittest.TestCase):
             0,
         )
 
+    def test_balanced_probes_expose_an_always_unknown_adapter(self):
+        class AlwaysUnknownMemory(CorrectionMemory):
+            def recall(self, probe):
+                return None
+
+        cases = generate_scenarios(17, 100, 12)
+        self.assertEqual(sum(case.expected is None for case in cases), 50)
+        self.assertEqual(sum(case.expected is not None for case in cases), 50)
+        self.assertTrue(all(run(case, CorrectionMemory)["status"] == "pass" for case in cases))
+        self.assertEqual(
+            sum(run(case, AlwaysUnknownMemory)["status"] == "pass" for case in cases), 50,
+        )
+
+    def test_legacy_generator_fingerprints_remain_replayable(self):
+        cases = generate_scenarios(17, 100, 12, generator_version=1)
+        self.assertEqual(cases[0].fingerprint(), "5cdcaa7eb54019b52ee7e5b5fa2b73923a73f984afcec05710c87fe563224c38")
+        self.assertEqual(cases[42].fingerprint(), "a2e5479a6995844ba7271005ebddec7c4baf625ec9ee0ce2ce83ba6080137829")
+
     def test_stream_does_not_retain_completed_scenarios(self):
         stream = iter_scenarios(17, 10_000, 2)
         first = next(stream)
@@ -365,6 +383,8 @@ class GeneratedScenarioTests(unittest.TestCase):
             generate_scenarios(1, 10_001, 1)
         with self.assertRaisesRegex(ValueError, "max_events"):
             generate_scenarios(1, 1, 0)
+        with self.assertRaisesRegex(ValueError, "generator_version"):
+            generate_scenarios(1, 1, 1, generator_version=3)
 
 
 class EvidenceStoreTests(unittest.TestCase):
@@ -1109,8 +1129,11 @@ class CliTests(unittest.TestCase):
         self.assertEqual(report["data_source"], "generated synthetic scenarios")
         self.assertEqual(report["seed"], 17)
         self.assertEqual(report["scenarios"], 100)
+        self.assertEqual(report["generator_version"], 2)
+        self.assertEqual(sum(report["expected_state_outcomes"]["present"].values()), 50)
+        self.assertEqual(sum(report["expected_state_outcomes"]["absent"].values()), 50)
         self.assertGreater(report["failure_count"], 0)
-        self.assertEqual(report["failure_count"], len(report["failures"]))
+        self.assertEqual(len(report["failures"]), min(report["failure_count"], 20))
         failure = report["failures"][0]
 
         materialized = subprocess.run(
@@ -1135,6 +1158,15 @@ class CliTests(unittest.TestCase):
         scenario_path = Path(self.directory.name) / "materialized.json"
         scenario_path.write_text(materialized.stdout)
         self.assertEqual(load(scenario_path).scenario.fingerprint(), failure["fingerprint"])
+
+        legacy = subprocess.run(
+            [sys.executable, "-m", "faultline", "materialize", "--seed", "17", "--index", "42",
+             "--max-events", "12", "--generator-version", "1"],
+            cwd=self.root, text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(legacy.returncode, 0, legacy.stderr)
+        scenario_path.write_text(legacy.stdout)
+        self.assertEqual(load(scenario_path).scenario.fingerprint(), "a2e5479a6995844ba7271005ebddec7c4baf625ec9ee0ce2ce83ba6080137829")
 
         invalid_budget = subprocess.run(
             [
