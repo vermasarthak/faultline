@@ -141,7 +141,7 @@ def _execute_session(
 
 def _cost(value: object) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise TypeError("adapter cost must be a nonnegative integer")
+        raise InvalidAdapterResponse("adapter cost must be a nonnegative integer")
     return value
 
 

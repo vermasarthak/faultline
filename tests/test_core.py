@@ -261,6 +261,35 @@ class AdapterExecutionTests(unittest.TestCase):
         malformed = run_bounded(self.scenario, MalformedSession, self.budget)
         self.assertEqual(malformed["status"], "invalid_response")
 
+    def test_malformed_cost_is_an_invalid_response_at_each_adapter_stage(self):
+        class Session:
+            def __init__(self, observe_cost=0, recall_cost=0):
+                self.observe_cost = observe_cost
+                self.recall_cost = recall_cost
+
+            def observe(self, event, deadline):
+                return self.observe_cost
+
+            def recall(self, probe, deadline):
+                return Recall("Oslo", self.recall_cost)
+
+            def close(self):
+                pass
+
+        for value in (-1, True, 1.5, "1", None):
+            with self.subTest(stage="observe", value=value):
+                result = run_bounded(
+                    self.scenario, lambda value=value: Session(observe_cost=value), self.budget
+                )
+                self.assertEqual(result["status"], "invalid_response")
+                self.assertNotIn("error_type", result)
+            with self.subTest(stage="recall", value=value):
+                result = run_bounded(
+                    self.scenario, lambda value=value: Session(recall_cost=value), self.budget
+                )
+                self.assertEqual(result["status"], "invalid_response")
+                self.assertNotIn("error_type", result)
+
     def test_budget_rejects_boolean_fractional_and_nonfinite_values(self):
         with self.assertRaisesRegex(ValueError, "max_operations"):
             Budget(True, 0, 1)
