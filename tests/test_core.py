@@ -326,6 +326,19 @@ os._exit(0)
         with self.assertRaisesRegex(ValueError, "fingerprint"):
             store.record(self.evidence, "not a fingerprint")
 
+    def test_store_rejects_malformed_evidence_fields(self):
+        store = EvidenceStore(self.path)
+        self.addCleanup(store.close)
+        invalid_cases = (
+            ({**self.evidence, "schema_version": 2}, "schema_version"),
+            ({**self.evidence, "status": "unknown status"}, "status"),
+            ({**self.evidence, "expected": 3}, "expected"),
+            ({**self.evidence, "actual": 3}, "actual"),
+        )
+        for evidence, message in invalid_cases:
+            with self.subTest(message=message), self.assertRaisesRegex(ValueError, message):
+                store.record(evidence, self.content_fingerprint)
+
     def test_delete_and_retention_remove_local_receipts(self):
         store = EvidenceStore(self.path)
         self.addCleanup(store.close)

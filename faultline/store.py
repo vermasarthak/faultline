@@ -13,6 +13,18 @@ from uuid import uuid4
 
 LATEST_SCHEMA_VERSION = 1
 CONNECTION_SETUP_TIMEOUT_SECONDS = 5
+EVIDENCE_STATUSES = frozenset(
+    {
+        "pass",
+        "fail",
+        "unknown",
+        "timeout",
+        "operation_budget_exceeded",
+        "cost_budget_exceeded",
+        "invalid_response",
+        "provider_error",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -211,11 +223,17 @@ def _validated_evidence(evidence: dict) -> dict:
     missing = required - set(evidence)
     if missing:
         raise ValueError(f"evidence is missing {sorted(missing)!r}")
+    if isinstance(evidence["schema_version"], bool) or evidence["schema_version"] != 1:
+        raise ValueError("evidence.schema_version must be 1")
     _fingerprint(evidence["fingerprint"], "evidence.fingerprint")
-    if not isinstance(evidence["scenario"], str) or not evidence["scenario"]:
+    if not isinstance(evidence["scenario"], str) or not evidence["scenario"].strip():
         raise ValueError("evidence.scenario must be a nonempty string")
-    if not isinstance(evidence["status"], str) or not evidence["status"]:
-        raise ValueError("evidence.status must be a nonempty string")
+    if not isinstance(evidence["status"], str) or evidence["status"] not in EVIDENCE_STATUSES:
+        raise ValueError("evidence.status is not recognized by schema version 1")
+    if evidence["expected"] is not None and not isinstance(evidence["expected"], str):
+        raise ValueError("evidence.expected must be a string or null")
+    if evidence["actual"] is not None and not isinstance(evidence["actual"], str):
+        raise ValueError("evidence.actual must be a string or null")
     try:
         json.dumps(evidence, sort_keys=True, separators=(",", ":"))
     except (TypeError, ValueError) as error:
