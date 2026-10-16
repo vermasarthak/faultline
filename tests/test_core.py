@@ -185,7 +185,23 @@ class AdapterExecutionTests(unittest.TestCase):
         error = run_bounded(self.scenario, BrokenSession, self.budget)
         self.assertEqual(error["status"], "provider_error")
         self.assertEqual(error["error_type"], "RuntimeError")
+        self.assertEqual(error["error_stage"], "observe")
         self.assertNotIn("secret provider text", str(error))
+
+        def broken_open():
+            raise RuntimeError("secret open text")
+
+        open_error = run_bounded(self.scenario, broken_open, self.budget)
+        self.assertEqual(open_error["error_stage"], "open")
+        self.assertNotIn("secret open text", str(open_error))
+
+        class RecallBrokenSession(SlowSession):
+            def recall(self, probe, deadline):
+                raise RuntimeError("secret recall text")
+
+        recall_error = run_bounded(self.scenario, RecallBrokenSession, self.budget)
+        self.assertEqual(recall_error["error_stage"], "recall")
+        self.assertNotIn("secret recall text", str(recall_error))
 
         class CloseBrokenSession(SlowSession):
             def close(self):

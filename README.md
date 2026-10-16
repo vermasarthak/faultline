@@ -33,7 +33,7 @@ Four first party JSON fixtures capture a distinct broken behavior: identity conf
 
 ## Adapter boundary
 
-Each bounded run opens and closes a fresh adapter session. Adapters receive events, probes, a deadline, and a declared nonnegative microdollar cost. Faultline records timeout, operation budget, cost budget, invalid response, and provider error outcomes separately from wrong or unknown recall. A close failure is a provider error with an explicit close stage. A deadline is evidence that an adapter exceeded its time budget. It cannot terminate an arbitrary synchronous adapter process.
+Each bounded run opens and closes a fresh adapter session. Adapters receive events, probes, a deadline, and a declared nonnegative microdollar cost. Faultline records timeout, operation budget, cost budget, invalid response, and provider error outcomes separately from wrong or unknown recall. Provider errors identify the safe lifecycle stage `open`, `observe`, `recall`, or `close` and the exception class without recording the exception message. A deadline is evidence that an adapter exceeded its time budget. It cannot terminate an arbitrary synchronous adapter process.
 
 ## Durable evidence
 

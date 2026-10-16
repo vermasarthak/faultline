@@ -48,12 +48,10 @@ def run_bounded(
     evidence = None
     try:
         session = open_session()
-        evidence = _execute_session(scenario, session, budget, clock, deadline)
     except Exception as error:
-        evidence = {
-            **_non_memory_evidence(scenario, "provider_error", 0, 0),
-            "error_type": type(error).__name__,
-        }
+        evidence = _provider_error(scenario, "open", 0, 0, error)
+    else:
+        evidence = _execute_session(scenario, session, budget, clock, deadline)
     finally:
         if session is not None:
             try:
@@ -61,11 +59,7 @@ def run_bounded(
             except Exception as error:
                 operations = evidence["operations"] if evidence is not None else 0
                 cost = evidence["cost_microusd"] if evidence is not None else 0
-                evidence = {
-                    **_non_memory_evidence(scenario, "provider_error", operations, cost),
-                    "error_type": type(error).__name__,
-                    "error_stage": "close",
-                }
+                evidence = _provider_error(scenario, "close", operations, cost, error)
     if evidence is None:
         raise RuntimeError("evaluation did not produce evidence")
     return evidence
@@ -80,6 +74,7 @@ def _execute_session(
 ) -> dict:
     operations = 0
     cost = 0
+    stage = "observe"
     try:
         for event in scenario.events:
             operations += 1
@@ -94,6 +89,7 @@ def _execute_session(
         state = _check_budget(operations, cost, budget, clock(), deadline)
         if state:
             return _non_memory_evidence(scenario, state, operations, cost)
+        stage = "recall"
         response = session.recall(scenario.probe, deadline)
         if not isinstance(response, Recall):
             return _non_memory_evidence(scenario, "invalid_response", operations, cost)
@@ -118,10 +114,7 @@ def _execute_session(
             "cost_microusd": cost,
         }
     except Exception as error:
-        return {
-            **_non_memory_evidence(scenario, "provider_error", operations, cost),
-            "error_type": type(error).__name__,
-        }
+        return _provider_error(scenario, stage, operations, cost, error)
 
 
 def _cost(value: object) -> int:
@@ -154,4 +147,14 @@ def _non_memory_evidence(
         "actual": None,
         "operations": operations,
         "cost_microusd": cost,
+    }
+
+
+def _provider_error(
+    scenario: Scenario, stage: str, operations: int, cost: int, error: Exception
+) -> dict:
+    return {
+        **_non_memory_evidence(scenario, "provider_error", operations, cost),
+        "error_type": type(error).__name__,
+        "error_stage": stage,
     }
