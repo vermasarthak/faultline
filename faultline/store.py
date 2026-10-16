@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import sqlite3
 from time import monotonic, sleep
@@ -30,6 +31,12 @@ class EvidenceStore:
 
     def __init__(self, path: str | Path):
         self.path = Path(path)
+        try:
+            descriptor = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_RDWR, 0o600)
+        except FileExistsError:
+            pass
+        else:
+            os.close(descriptor)
         self.connection = sqlite3.connect(self.path, timeout=CONNECTION_SETUP_TIMEOUT_SECONDS)
         self.connection.row_factory = sqlite3.Row
         try:

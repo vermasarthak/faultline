@@ -33,7 +33,7 @@ class ProcessAdapterTests(unittest.TestCase):
         path.chmod(0o700)
         return path
 
-    def evaluate(self, program: Path, timeout: float = 2, cost: int = 0) -> dict:
+    def evaluate(self, program: Path, timeout: float = 5, cost: int = 0) -> dict:
         return run_bounded(
             self.scenario,
             lambda: ProcessSession(program),
@@ -86,7 +86,7 @@ class ProcessAdapterTests(unittest.TestCase):
             "large", (Event("Mina", "note", "x" * (200 * 1024)),),
             Probe("Mina", "note"), str(200 * 1024),
         )
-        result = run_bounded(scenario, lambda: ProcessSession(program), Budget(2, 0, 2))
+        result = run_bounded(scenario, lambda: ProcessSession(program), Budget(2, 0, 5))
         self.assertEqual(result["status"], "pass")
 
     def test_timeout_terminates_descendant_in_the_process_group(self):

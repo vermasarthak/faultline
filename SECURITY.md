@@ -10,6 +10,8 @@ The continuity protocol passes a temporary directory path to each process in a t
 
 Each `EvidenceStore` instance owns one SQLite connection and must stay in its creating thread. Use a separate store instance for each concurrent writer. SQLite serializes write transactions with a five second busy timeout. A sustained write load beyond that timeout can return a lock error and needs caller level retry or a different storage design.
 
+When creating a new evidence database on POSIX, Faultline requests mode 0600 before SQLite opens it. Existing database permissions are left alone. This is a local default, not a defense against a hostile user with access to the parent directory, backups, or the same operating system account.
+
 Run `faultline verify --database evidence.db` before relying on old local evidence. It checks SQLite structural integrity and validates every stored evidence payload. It cannot detect filesystem rollback, malicious modification that remains structurally valid, or missing backup data.
 
 If a future integration adds a provider or a network service, this threat model must be replaced with explicit secret handling, tenant isolation, authorization, auditability, abuse limits, and input and output policies.

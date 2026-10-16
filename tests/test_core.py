@@ -2,7 +2,9 @@ import unittest
 import subprocess
 import sys
 import json
+import os
 import sqlite3
+import stat
 import weakref
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor
@@ -378,6 +380,36 @@ class EvidenceStoreTests(unittest.TestCase):
         )
         self.evidence = run(self.scenario, CorrectionMemory)
         self.content_fingerprint = "a" * 64
+
+    def test_new_database_and_journal_files_are_owner_only(self):
+        process = subprocess.run(
+            [sys.executable, "-c", """
+import json
+import os
+from pathlib import Path
+import stat
+import sys
+from faultline.store import EvidenceStore
+os.umask(0)
+path = Path(sys.argv[1])
+store = EvidenceStore(path)
+print(json.dumps({item.name: stat.S_IMODE(item.stat().st_mode)
+                  for item in path.parent.iterdir()}))
+store.close()
+""", str(self.path)],
+            cwd=Path(__file__).parent.parent, text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(process.returncode, 0, process.stderr)
+        modes = json.loads(process.stdout)
+        self.assertEqual(set(modes), {"evidence.db", "evidence.db-wal", "evidence.db-shm"})
+        self.assertEqual(set(modes.values()), {0o600})
+
+    def test_existing_database_permissions_are_not_changed(self):
+        self.path.touch()
+        os.chmod(self.path, 0o644)
+        store = EvidenceStore(self.path)
+        self.addCleanup(store.close)
+        self.assertEqual(stat.S_IMODE(self.path.stat().st_mode), 0o644)
 
     def test_committed_evidence_survives_a_reopen(self):
         store = EvidenceStore(self.path)
