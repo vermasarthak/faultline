@@ -720,6 +720,27 @@ class CliTests(unittest.TestCase):
         self.assertEqual(process.returncode, 2)
         self.assertIn("unsupported adapter", process.stderr)
 
+    def test_maintenance_commands_do_not_create_a_missing_database(self):
+        commands = (
+            ("show", "--run-id", "missing"),
+            ("delete", "--run-id", "missing"),
+            ("prune", "--keep", "1"),
+            ("verify",),
+        )
+        for index, command in enumerate(commands):
+            database = Path(self.directory.name) / f"missing-{index}.db"
+            process = subprocess.run(
+                [sys.executable, "-m", "faultline", command[0], "--database", str(database), *command[1:]],
+                cwd=self.root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            with self.subTest(command=command[0]):
+                self.assertEqual(process.returncode, 2)
+                self.assertIn("evidence database does not exist", process.stderr)
+                self.assertFalse(database.exists())
+
     def test_benchmark_reports_only_synthetic_harness_results(self):
         process = subprocess.run(
             [sys.executable, "-m", "faultline", "benchmark", "--iterations", "3"],

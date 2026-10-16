@@ -116,7 +116,7 @@ def _adapter_factory(name: str):
 
 
 def _show(args) -> dict:
-    store = EvidenceStore(args.database)
+    store = _existing_store(args.database)
     try:
         stored = store.get(args.run_id)
     finally:
@@ -132,7 +132,7 @@ def _show(args) -> dict:
 
 
 def _delete(args) -> dict:
-    store = EvidenceStore(args.database)
+    store = _existing_store(args.database)
     try:
         deleted = store.delete(args.run_id)
     finally:
@@ -141,7 +141,7 @@ def _delete(args) -> dict:
 
 
 def _prune(args) -> dict:
-    store = EvidenceStore(args.database)
+    store = _existing_store(args.database)
     try:
         deleted = store.retain_latest(args.keep)
     finally:
@@ -150,12 +150,18 @@ def _prune(args) -> dict:
 
 
 def _verify(args) -> dict:
-    store = EvidenceStore(args.database)
+    store = _existing_store(args.database)
     try:
         receipts = store.verify_integrity()
     finally:
         store.close()
     return {"integrity": "ok", "receipts": receipts}
+
+
+def _existing_store(path: Path) -> EvidenceStore:
+    if not path.is_file():
+        raise ValueError(f"evidence database does not exist: {path}")
+    return EvidenceStore(path)
 
 
 def _benchmark(args) -> dict:
