@@ -8,7 +8,7 @@ Faultline evaluates one synthetic memory scenario at a time. It is intentionally
 2. The evaluator keeps the expected answer. An adapter receives only events, a probe, and a deadline.
 3. `execution.run_bounded` opens a fresh session, applies events in order, applies operation, cost, and deadline checks, then closes the session.
 4. The evaluator emits structured evidence. Wrong recall, unknown recall, invalid output, provider error, and exhausted budgets remain distinct statuses.
-5. `trials.repeat` aggregates repeated executions. `heldout.compare_held_out` rejects overlapping development and held out scenario fingerprints before comparison.
+5. `generate.generate_scenarios` derives bounded synthetic write and delete histories from a seed and independent state oracle. `trials.repeat` aggregates repeated executions. `heldout.compare_held_out` rejects overlapping development and held out scenario fingerprints before comparison.
 6. `store.EvidenceStore` can commit one completed evidence object as a local SQLite receipt.
 
 ## State and isolation

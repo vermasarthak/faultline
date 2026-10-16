@@ -14,6 +14,7 @@ from faultline.store import EvidenceStore
 from faultline.trials import compare_repairs, repeat
 from faultline.heldout import MAX_MANIFEST_BYTES, compare_held_out, load_manifest, load_suite
 from faultline.minimize import minimize_failure
+from faultline.generate import generate_scenarios
 
 
 class EvidenceTests(unittest.TestCase):
@@ -296,6 +297,25 @@ class FailureFixtureTests(unittest.TestCase):
         }
         for name, broken_memory in cases.items():
             self.assertEqual(run(fixtures[name].scenario, broken_memory)["status"], "fail")
+
+
+class GeneratedScenarioTests(unittest.TestCase):
+    def test_generated_histories_are_deterministic_and_match_the_reference_oracle(self):
+        scenarios = generate_scenarios(17, 100, 12)
+        self.assertEqual(scenarios, generate_scenarios(17, 100, 12))
+        self.assertTrue(all(run(scenario, CorrectionMemory)["status"] == "pass" for scenario in scenarios))
+        self.assertGreater(
+            sum(run(scenario, StaleMemory)["status"] == "fail" for scenario in scenarios),
+            0,
+        )
+
+    def test_generator_rejects_unbounded_inputs(self):
+        with self.assertRaisesRegex(ValueError, "seed"):
+            generate_scenarios(-1, 1, 1)
+        with self.assertRaisesRegex(ValueError, "count"):
+            generate_scenarios(1, 10_001, 1)
+        with self.assertRaisesRegex(ValueError, "max_events"):
+            generate_scenarios(1, 1, 0)
 
 
 class EvidenceStoreTests(unittest.TestCase):
@@ -863,6 +883,54 @@ class CliTests(unittest.TestCase):
         self.assertEqual(report["target_status"], "fail")
         self.assertEqual(report["removed_events"], 1)
         self.assertEqual(len(report["minimized"]["events"]), 2)
+
+    def test_sweep_reports_reproducible_generated_failures(self):
+        process = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "faultline",
+                "sweep",
+                "--adapter",
+                "stale",
+                "--seed",
+                "17",
+                "--scenarios",
+                "100",
+                "--max-events",
+                "12",
+            ],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(process.returncode, 0, process.stderr)
+        report = json.loads(process.stdout)
+        self.assertEqual(report["data_source"], "generated synthetic scenarios")
+        self.assertEqual(report["seed"], 17)
+        self.assertEqual(report["scenarios"], 100)
+        self.assertGreater(report["failure_count"], 0)
+        self.assertEqual(report["failure_count"], len(report["failures"]))
+
+        invalid_budget = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "faultline",
+                "sweep",
+                "--max-events",
+                "2",
+                "--max-operations",
+                "2",
+            ],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(invalid_budget.returncode, 2)
+        self.assertIn("reserve a probe", invalid_budget.stderr)
 
     def test_maintenance_commands_do_not_create_a_missing_database(self):
         commands = (

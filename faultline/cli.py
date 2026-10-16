@@ -11,6 +11,7 @@ from typing import Sequence
 from .__main__ import CorrectionMemory, StaleMemory
 from .core import Event, Probe, Scenario, run
 from .execution import Budget, Recall, run_bounded
+from .generate import GENERATOR_VERSION, generate_scenarios
 from .heldout import compare_held_out, load_suite
 from .minimize import minimize_failure
 from .scenario import load
@@ -62,6 +63,15 @@ def main(argv: Sequence[str]) -> int:
     minimize_parser.add_argument("--timeout-seconds", type=float, default=5)
     minimize_parser.add_argument("--max-operations", type=int, default=100)
     minimize_parser.add_argument("--max-cost-microusd", type=int, default=0)
+    sweep_parser = commands.add_parser("sweep", help="run generated synthetic memory histories")
+    sweep_parser.add_argument("--adapter", default="correction")
+    sweep_parser.add_argument("--seed", type=int, default=1)
+    sweep_parser.add_argument("--scenarios", type=int, default=100)
+    sweep_parser.add_argument("--max-events", type=int, default=20)
+    sweep_parser.add_argument("--max-failures", type=int, default=20)
+    sweep_parser.add_argument("--timeout-seconds", type=float, default=5)
+    sweep_parser.add_argument("--max-operations", type=int, default=100)
+    sweep_parser.add_argument("--max-cost-microusd", type=int, default=0)
     show_parser = commands.add_parser("show", help="show a persisted evidence receipt")
     show_parser.add_argument("--database", required=True, type=Path)
     show_parser.add_argument("--run-id", required=True)
@@ -83,6 +93,8 @@ def main(argv: Sequence[str]) -> int:
             report = _compare(args)
         elif args.command == "minimize":
             report = _minimize(args)
+        elif args.command == "sweep":
+            report = _sweep(args)
         elif args.command == "show":
             report = _show(args)
         elif args.command == "delete":
@@ -196,6 +208,41 @@ def _minimize(args) -> dict:
         "removed_events": result.removed_events,
         "original": asdict(result.original),
         "minimized": asdict(result.minimized),
+    }
+
+
+def _sweep(args) -> dict:
+    if not 1 <= args.max_failures <= 1_000:
+        raise ValueError("max_failures must be between 1 and 1000")
+    if args.max_events >= args.max_operations:
+        raise ValueError("max_events must be below max_operations to reserve a probe operation")
+    scenarios = generate_scenarios(args.seed, args.scenarios, args.max_events)
+    budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
+    factory = _adapter_factory(args.adapter)
+    outcomes: dict[str, int] = {}
+    failures = []
+    for scenario in scenarios:
+        evidence = run_bounded(scenario, factory, budget)
+        status = evidence["status"]
+        outcomes[status] = outcomes.get(status, 0) + 1
+        if status != "pass" and len(failures) < args.max_failures:
+            failures.append(
+                {
+                    "scenario": scenario.name,
+                    "fingerprint": scenario.fingerprint(),
+                    "status": status,
+                }
+            )
+    return {
+        "data_source": "generated synthetic scenarios",
+        "generator_version": GENERATOR_VERSION,
+        "seed": args.seed,
+        "scenarios": args.scenarios,
+        "max_events": args.max_events,
+        "budget": asdict(budget),
+        "outcomes": outcomes,
+        "failure_count": args.scenarios - outcomes.get("pass", 0),
+        "failures": failures,
     }
 
 
