@@ -4,6 +4,7 @@ import argparse
 from dataclasses import asdict
 import json
 from pathlib import Path
+import platform
 from time import perf_counter
 from typing import Sequence
 
@@ -170,6 +171,11 @@ def _benchmark(args) -> dict:
         "data_source": "synthetic fixture",
         "scope": "single process core harness only",
         "iterations": args.iterations,
+        "scenario_fingerprint": scenario.fingerprint(),
+        "runtime": {
+            "implementation": platform.python_implementation(),
+            "python_version": platform.python_version(),
+        },
         "operations_per_run": len(scenario.events) + 1,
         "stale": _measure(scenario, StaleMemory, args.iterations),
         "correction": _measure(scenario, CorrectionMemory, args.iterations),
