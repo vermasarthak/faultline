@@ -507,6 +507,7 @@ os._exit(0)
                     for index in range(1_100)
                 ],
             )
+        self.assertEqual(store.verify_integrity(), 1_100)
         self.assertEqual(store.retain_latest(1), 1_099)
         self.assertEqual(len(store.recent(20)), 1)
 

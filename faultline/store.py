@@ -123,10 +123,12 @@ class EvidenceStore:
         rows = self.connection.execute(
             "SELECT run_id, recorded_at, canonical_fingerprint, content_fingerprint, status, evidence_json "
             "FROM runs"
-        ).fetchall()
+        )
+        count = 0
         for row in rows:
             _stored_run(row)
-        return len(rows)
+            count += 1
+        return count
 
     @contextmanager
     def write_transaction(self) -> Iterator[sqlite3.Connection]:
