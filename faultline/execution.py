@@ -44,11 +44,43 @@ def run_bounded(
     """Runs one fresh session and records failure class without leaking errors."""
     started = clock()
     deadline = started + budget.timeout_seconds
-    operations = 0
-    cost = 0
     session = None
+    evidence = None
     try:
         session = open_session()
+        evidence = _execute_session(scenario, session, budget, clock, deadline)
+    except Exception as error:
+        evidence = {
+            **_non_memory_evidence(scenario, "provider_error", 0, 0),
+            "error_type": type(error).__name__,
+        }
+    finally:
+        if session is not None:
+            try:
+                session.close()
+            except Exception as error:
+                operations = evidence["operations"] if evidence is not None else 0
+                cost = evidence["cost_microusd"] if evidence is not None else 0
+                evidence = {
+                    **_non_memory_evidence(scenario, "provider_error", operations, cost),
+                    "error_type": type(error).__name__,
+                    "error_stage": "close",
+                }
+    if evidence is None:
+        raise RuntimeError("evaluation did not produce evidence")
+    return evidence
+
+
+def _execute_session(
+    scenario: Scenario,
+    session: Session,
+    budget: Budget,
+    clock: Callable[[], float],
+    deadline: float,
+) -> dict:
+    operations = 0
+    cost = 0
+    try:
         for event in scenario.events:
             operations += 1
             state = _check_budget(operations, cost, budget, clock(), deadline)
@@ -90,12 +122,6 @@ def run_bounded(
             **_non_memory_evidence(scenario, "provider_error", operations, cost),
             "error_type": type(error).__name__,
         }
-    finally:
-        if session is not None:
-            try:
-                session.close()
-            except Exception:
-                pass
 
 
 def _cost(value: object) -> int:

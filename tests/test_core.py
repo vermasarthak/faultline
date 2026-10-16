@@ -187,6 +187,16 @@ class AdapterExecutionTests(unittest.TestCase):
         self.assertEqual(error["error_type"], "RuntimeError")
         self.assertNotIn("secret provider text", str(error))
 
+        class CloseBrokenSession(SlowSession):
+            def close(self):
+                raise RuntimeError("secret close text")
+
+        close_error = run_bounded(self.scenario, CloseBrokenSession, self.budget)
+        self.assertEqual(close_error["status"], "provider_error")
+        self.assertEqual(close_error["error_type"], "RuntimeError")
+        self.assertEqual(close_error["error_stage"], "close")
+        self.assertNotIn("secret close text", str(close_error))
+
         class MalformedSession(SlowSession):
             def recall(self, probe, deadline):
                 return "Oslo"
