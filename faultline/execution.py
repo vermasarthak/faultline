@@ -8,6 +8,20 @@ from typing import Callable, Protocol
 from .core import Event, Probe, Scenario
 
 
+EVIDENCE_STATUSES = frozenset(
+    {
+        "pass",
+        "fail",
+        "unknown",
+        "timeout",
+        "operation_budget_exceeded",
+        "cost_budget_exceeded",
+        "invalid_response",
+        "provider_error",
+    }
+)
+
+
 @dataclass(frozen=True)
 class Budget:
     max_operations: int

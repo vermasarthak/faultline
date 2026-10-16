@@ -532,6 +532,8 @@ class TrialTests(unittest.TestCase):
             repeat(lambda: self.evidence("pass", cost=True), 1)
         with self.assertRaisesRegex(ValueError, "SHA 256"):
             repeat(lambda: self.evidence("pass", fingerprint="not a fingerprint"), 1)
+        with self.assertRaisesRegex(ValueError, "not recognized"):
+            repeat(lambda: self.evidence("passed"), 1)
 
 
 class HeldOutTests(unittest.TestCase):

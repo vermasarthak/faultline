@@ -10,21 +10,10 @@ from time import monotonic, sleep
 from typing import Iterator
 from uuid import uuid4
 
+from .execution import EVIDENCE_STATUSES
 
 LATEST_SCHEMA_VERSION = 1
 CONNECTION_SETUP_TIMEOUT_SECONDS = 5
-EVIDENCE_STATUSES = frozenset(
-    {
-        "pass",
-        "fail",
-        "unknown",
-        "timeout",
-        "operation_budget_exceeded",
-        "cost_budget_exceeded",
-        "invalid_response",
-        "provider_error",
-    }
-)
 
 
 @dataclass(frozen=True)

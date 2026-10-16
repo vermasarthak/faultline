@@ -5,6 +5,8 @@ from math import sqrt
 from time import monotonic
 from typing import Callable
 
+from .execution import EVIDENCE_STATUSES
+
 
 @dataclass(frozen=True)
 class TrialSummary:
@@ -48,8 +50,8 @@ def repeat(
             raise TypeError("evaluation must return an evidence object")
         status = evidence.get("status")
         fingerprint = evidence.get("fingerprint")
-        if not isinstance(status, str) or not status:
-            raise ValueError("evidence.status must be a nonempty string")
+        if not isinstance(status, str) or status not in EVIDENCE_STATUSES:
+            raise ValueError("evidence.status is not recognized by schema version 1")
         _fingerprint(fingerprint)
         cost = evidence.get("cost_microusd", 0)
         if isinstance(cost, bool) or not isinstance(cost, int) or cost < 0:
