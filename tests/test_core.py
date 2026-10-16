@@ -912,6 +912,30 @@ class CliTests(unittest.TestCase):
         self.assertEqual(report["scenarios"], 100)
         self.assertGreater(report["failure_count"], 0)
         self.assertEqual(report["failure_count"], len(report["failures"]))
+        failure = report["failures"][0]
+
+        materialized = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "faultline",
+                "materialize",
+                "--seed",
+                "17",
+                "--index",
+                str(failure["index"]),
+                "--max-events",
+                "12",
+            ],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(materialized.returncode, 0, materialized.stderr)
+        scenario_path = Path(self.directory.name) / "materialized.json"
+        scenario_path.write_text(materialized.stdout)
+        self.assertEqual(load(scenario_path).scenario.fingerprint(), failure["fingerprint"])
 
         invalid_budget = subprocess.run(
             [

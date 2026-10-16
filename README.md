@@ -13,6 +13,7 @@ python3 -m faultline run --scenario examples/correction.json --adapter correctio
 python3 -m faultline compare --development-manifest examples/manifests/development.json --held-out-manifest examples/manifests/held-out.json --baseline stale --candidate correction --attempts 3
 python3 -m faultline minimize --scenario examples/correction.json --adapter stale
 python3 -m faultline sweep --adapter correction --seed 17 --scenarios 1000 --max-events 20
+python3 -m faultline materialize --seed 17 --index 42 --max-events 20 > generated-case.json
 python3 -m faultline benchmark --iterations 10000
 ```
 
@@ -22,7 +23,7 @@ The local CLI emits JSON only. `run` executes a synthetic scenario with a declar
 
 Use `compare --fail-on-regression` in a local check or CI job to emit the complete held out report and return a nonzero status when a candidate has a lower scored pass rate on any held out scenario. It is an opt in guard for the synthetic fixtures, not a claim about real model quality.
 
-`sweep` generates bounded write and delete histories from a declared seed and independent state oracle, then evaluates one adapter. Its output records the generator version, seed, bounds, and failure fingerprints so the run is reproducible. It is synthetic property coverage, not model coverage.
+`sweep` generates bounded write and delete histories from a declared seed and independent state oracle, then evaluates one adapter. Its output records the generator version, seed, bounds, and failure fingerprints so the run is reproducible. `materialize` turns a sweep index back into a version two scenario file for `minimize`. It is synthetic property coverage, not model coverage.
 
 The demo teaches an assistant that Mina lives in Rome, corrects it to Oslo, and asks for the current city. The stale fixture fails. The correction fixture passes. Both outputs include the scenario fingerprint and observed response.
 

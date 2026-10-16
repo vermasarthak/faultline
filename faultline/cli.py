@@ -63,6 +63,10 @@ def main(argv: Sequence[str]) -> int:
     minimize_parser.add_argument("--timeout-seconds", type=float, default=5)
     minimize_parser.add_argument("--max-operations", type=int, default=100)
     minimize_parser.add_argument("--max-cost-microusd", type=int, default=0)
+    materialize_parser = commands.add_parser("materialize", help="print one generated scenario document")
+    materialize_parser.add_argument("--seed", type=int, required=True)
+    materialize_parser.add_argument("--index", type=int, required=True)
+    materialize_parser.add_argument("--max-events", type=int, required=True)
     sweep_parser = commands.add_parser("sweep", help="run generated synthetic memory histories")
     sweep_parser.add_argument("--adapter", default="correction")
     sweep_parser.add_argument("--seed", type=int, default=1)
@@ -93,6 +97,8 @@ def main(argv: Sequence[str]) -> int:
             report = _compare(args)
         elif args.command == "minimize":
             report = _minimize(args)
+        elif args.command == "materialize":
+            report = _materialize(args)
         elif args.command == "sweep":
             report = _sweep(args)
         elif args.command == "show":
@@ -221,13 +227,14 @@ def _sweep(args) -> dict:
     factory = _adapter_factory(args.adapter)
     outcomes: dict[str, int] = {}
     failures = []
-    for scenario in scenarios:
+    for index, scenario in enumerate(scenarios):
         evidence = run_bounded(scenario, factory, budget)
         status = evidence["status"]
         outcomes[status] = outcomes.get(status, 0) + 1
         if status != "pass" and len(failures) < args.max_failures:
             failures.append(
                 {
+                    "index": index,
                     "scenario": scenario.name,
                     "fingerprint": scenario.fingerprint(),
                     "status": status,
@@ -244,6 +251,13 @@ def _sweep(args) -> dict:
         "failure_count": args.scenarios - outcomes.get("pass", 0),
         "failures": failures,
     }
+
+
+def _materialize(args) -> dict:
+    if not 0 <= args.index < 10_000:
+        raise ValueError("index must be between 0 and 9999")
+    scenario = generate_scenarios(args.seed, args.index + 1, args.max_events)[-1]
+    return {"version": 2, **asdict(scenario)}
 
 
 def _show(args) -> dict:
