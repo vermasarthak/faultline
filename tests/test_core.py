@@ -397,6 +397,7 @@ os._exit(0)
             ({**self.evidence, "cost_microusd": True}, "cost_microusd"),
             ({**self.evidence, "error_stage": []}, "error_stage"),
             ({**self.evidence, "error_type": "TimeoutError"}, "provider_error"),
+            ({**self.evidence, "adapter": {"kind": "local_program", "sha256": "bad"}}, "sha256"),
             ({**self.evidence, "events": [{**self.evidence["events"][0], "note": "extra"}]}, "undeclared fields"),
             ({**self.evidence, "events": []}, "fingerprint"),
         )

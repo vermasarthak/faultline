@@ -1,6 +1,7 @@
 """Failure tests for the local executable boundary."""
 
 import json
+from hashlib import sha256
 from pathlib import Path
 import subprocess
 import sys
@@ -11,6 +12,7 @@ import unittest
 from faultline.core import Event, Probe, Scenario
 from faultline.execution import Budget, run_bounded
 from faultline.process_adapter import ProcessSession
+from faultline.store import EvidenceStore
 
 
 class ProcessAdapterTests(unittest.TestCase):
@@ -105,6 +107,45 @@ class ProcessAdapterTests(unittest.TestCase):
     def test_example_sqlite_program_handles_correction(self):
         program = Path(__file__).resolve().parents[1] / "examples/sqlite_memory.py"
         self.assertEqual(self.evaluate(program)["status"], "pass")
+
+    def test_receipt_identifies_the_executable_bytes(self):
+        root = Path(__file__).resolve().parents[1]
+        program = root / "examples/sqlite_memory.py"
+        database = self.root / "evidence.db"
+        process = subprocess.run(
+            [sys.executable, "-m", "faultline", "run", "--scenario",
+             str(root / "examples/correction.json"), "--program", str(program),
+             "--database", str(database)],
+            cwd=root, text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(process.returncode, 0, process.stderr)
+        report = json.loads(process.stdout)
+        identity = {"kind": "local_program", "sha256": sha256(program.read_bytes()).hexdigest()}
+        self.assertEqual(report["adapter"], identity)
+        store = EvidenceStore(database)
+        try:
+            self.assertEqual(store.get(report["stored_run_id"]).evidence["adapter"], identity)
+        finally:
+            store.close()
+
+    def test_changed_executable_cannot_produce_a_receipt(self):
+        program = self.program(
+            "import json, sys\n"
+            "json.load(sys.stdin)\n"
+            "with open(sys.argv[0], 'a') as source: source.write('# changed\\n')\n"
+            "print('{\"version\":1,\"value\":\"Oslo\",\"cost_microusd\":0}')\n"
+        )
+        database = self.root / "evidence.db"
+        root = Path(__file__).resolve().parents[1]
+        process = subprocess.run(
+            [sys.executable, "-m", "faultline", "run", "--scenario",
+             str(root / "examples/correction.json"), "--program", str(program),
+             "--database", str(database)],
+            cwd=root, text=True, capture_output=True, check=False,
+        )
+        self.assertEqual(process.returncode, 2)
+        self.assertIn("changed during evaluation", process.stderr)
+        self.assertFalse(database.exists())
 
     def test_external_program_can_be_swept_and_its_failure_minimized(self):
         root = Path(__file__).resolve().parents[1]

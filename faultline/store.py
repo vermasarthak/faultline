@@ -223,7 +223,7 @@ def _validated_evidence(evidence: dict) -> dict:
     if missing:
         raise ValueError(f"evidence is missing {sorted(missing)!r}")
     allowed = required | {
-        "events", "probe", "operations", "cost_microusd", "error_type", "error_stage"
+        "events", "probe", "operations", "cost_microusd", "error_type", "error_stage", "adapter"
     }
     unknown = set(evidence) - allowed
     if unknown:
@@ -258,6 +258,17 @@ def _validated_evidence(evidence: dict) -> dict:
         raise ValueError("evidence.error_stage is not recognized")
     if ("error_type" in evidence or "error_stage" in evidence) and evidence["status"] != "provider_error":
         raise ValueError("error fields require provider_error status")
+    if "adapter" in evidence:
+        adapter = evidence["adapter"]
+        if not isinstance(adapter, dict):
+            raise ValueError("evidence.adapter must be an object")
+        if adapter.get("kind") == "fixture" and set(adapter) == {"kind", "name"}:
+            if not isinstance(adapter["name"], str) or not adapter["name"].strip():
+                raise ValueError("evidence.adapter.name must be nonempty")
+        elif adapter.get("kind") == "local_program" and set(adapter) == {"kind", "sha256"}:
+            _fingerprint(adapter["sha256"], "evidence.adapter.sha256")
+        else:
+            raise ValueError("evidence.adapter has invalid fields")
     if ("events" in evidence) != ("probe" in evidence):
         raise ValueError("evidence.events and evidence.probe must appear together")
     if "events" in evidence:

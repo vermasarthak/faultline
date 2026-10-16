@@ -2,6 +2,7 @@
 
 import argparse
 from dataclasses import asdict
+from hashlib import sha256
 import json
 from pathlib import Path
 import platform
@@ -132,20 +133,24 @@ def main(argv: Sequence[str]) -> int:
 def _run(args) -> dict:
     document = load(args.scenario)
     budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
+    adapter = _adapter_identity(args.adapter, args.program, "correction")
     factory = _adapter_factory(args.adapter, args.program, "correction")
     evidence: list[dict] = []
 
     def evaluate() -> dict:
         result = run_bounded(document.scenario, factory, budget)
+        result["adapter"] = adapter
         evidence.append(result)
         return result
 
     summary = repeat(evaluate, args.attempts)
+    _check_program_unchanged(args.program, adapter)
     report = {
         "data_source": "synthetic scenario with local executable" if args.program else "synthetic scenario",
         "scenario": document.scenario.name,
         "content_fingerprint": document.content_fingerprint,
         "budget": asdict(budget),
+        "adapter": adapter,
         "last_evidence": evidence[-1],
         "summary": _summary(summary),
     }
@@ -172,6 +177,21 @@ def _adapter_factory(name: str | None, program: Path | None = None, default: str
     return lambda: MemorySession(memory_type)
 
 
+def _adapter_identity(name: str | None, program: Path | None, default: str) -> dict:
+    if program is None:
+        return {"kind": "fixture", "name": name or default}
+    digest = sha256()
+    with program.resolve().open("rb") as source:
+        for block in iter(lambda: source.read(64 * 1024), b""):
+            digest.update(block)
+    return {"kind": "local_program", "sha256": digest.hexdigest()}
+
+
+def _check_program_unchanged(program: Path | None, identity: dict) -> None:
+    if program is not None and _adapter_identity(None, program, "") != identity:
+        raise ValueError("local program changed during evaluation")
+
+
 def _compare(args) -> dict:
     suite = load_suite(
         args.development_manifest,
@@ -179,6 +199,8 @@ def _compare(args) -> dict:
         args.fixture_directory,
     )
     budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
+    baseline_adapter = _adapter_identity(args.baseline, args.baseline_program, "stale")
+    candidate_adapter = _adapter_identity(args.candidate, args.candidate_program, "correction")
     report = compare_held_out(
         suite,
         _adapter_factory(args.baseline, args.baseline_program, "stale"),
@@ -186,6 +208,8 @@ def _compare(args) -> dict:
         budget,
         args.attempts,
     )
+    _check_program_unchanged(args.baseline_program, baseline_adapter)
+    _check_program_unchanged(args.candidate_program, candidate_adapter)
     comparisons = [
         {
             "scenario": item.scenario,
@@ -205,6 +229,8 @@ def _compare(args) -> dict:
         "development_manifest": suite.development.name,
         "held_out_manifest": suite.held_out.name,
         "budget": asdict(report.budget),
+        "baseline_adapter": baseline_adapter,
+        "candidate_adapter": candidate_adapter,
         "attempts": args.attempts,
         "regression_count": sum(item["verdict"] == "regression" for item in comparisons),
         "inconclusive_count": sum(item["verdict"] == "inconclusive" for item in comparisons),
@@ -215,16 +241,19 @@ def _compare(args) -> dict:
 def _minimize(args) -> dict:
     document = load(args.scenario)
     budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
+    adapter = _adapter_identity(args.adapter, args.program, "stale")
     factory = _adapter_factory(args.adapter, args.program, "stale")
     result = minimize_failure(
         document.scenario,
         lambda scenario: run_bounded(scenario, factory, budget),
         args.max_evaluations,
     )
+    _check_program_unchanged(args.program, adapter)
     return {
         "data_source": "synthetic scenario with local executable" if args.program else "synthetic scenario",
         "content_fingerprint": document.content_fingerprint,
         "budget": asdict(budget),
+        "adapter": adapter,
         "target_status": result.target_status,
         "evaluations": result.evaluations,
         "removed_events": result.removed_events,
@@ -240,6 +269,7 @@ def _sweep(args) -> dict:
         raise ValueError("max_events must be below max_operations to reserve a probe operation")
     scenarios = generate_scenarios(args.seed, args.scenarios, args.max_events)
     budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
+    adapter = _adapter_identity(args.adapter, args.program, "correction")
     factory = _adapter_factory(args.adapter, args.program, "correction")
     outcomes: dict[str, int] = {}
     failures = []
@@ -256,6 +286,7 @@ def _sweep(args) -> dict:
                     "status": status,
                 }
             )
+    _check_program_unchanged(args.program, adapter)
     return {
         "data_source": (
             "generated synthetic scenarios with local executable"
@@ -266,6 +297,7 @@ def _sweep(args) -> dict:
         "scenarios": args.scenarios,
         "max_events": args.max_events,
         "budget": asdict(budget),
+        "adapter": adapter,
         "outcomes": outcomes,
         "failure_count": args.scenarios - outcomes.get("pass", 0),
         "failures": failures,
