@@ -49,6 +49,10 @@ class Session(Protocol):
     def close(self) -> None: ...
 
 
+class InvalidAdapterResponse(Exception):
+    """An adapter returned data outside its declared response contract."""
+
+
 def run_bounded(
     scenario: Scenario,
     open_session: Callable[[], Session],
@@ -127,6 +131,10 @@ def _execute_session(
             "operations": operations,
             "cost_microusd": cost,
         }
+    except InvalidAdapterResponse:
+        return _non_memory_evidence(scenario, "invalid_response", operations, cost)
+    except TimeoutError:
+        return _non_memory_evidence(scenario, "timeout", operations, cost)
     except Exception as error:
         return _provider_error(scenario, stage, operations, cost, error)
 

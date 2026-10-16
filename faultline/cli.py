@@ -14,6 +14,7 @@ from .execution import Budget, Recall, run_bounded
 from .generate import GENERATOR_VERSION, generate_scenarios
 from .heldout import compare_held_out, load_suite
 from .minimize import minimize_failure
+from .process_adapter import ProcessSession
 from .scenario import load
 from .store import EvidenceStore
 from .trials import TrialSummary, repeat
@@ -39,7 +40,8 @@ def main(argv: Sequence[str]) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     run_parser = commands.add_parser("run", help="run a synthetic scenario")
     run_parser.add_argument("--scenario", required=True, type=Path)
-    run_parser.add_argument("--adapter", default="correction")
+    run_parser.add_argument("--adapter")
+    run_parser.add_argument("--program", type=Path)
     run_parser.add_argument("--attempts", type=int, default=1)
     run_parser.add_argument("--timeout-seconds", type=float, default=5)
     run_parser.add_argument("--max-operations", type=int, default=100)
@@ -49,8 +51,10 @@ def main(argv: Sequence[str]) -> int:
     compare_parser.add_argument("--development-manifest", required=True, type=Path)
     compare_parser.add_argument("--held-out-manifest", required=True, type=Path)
     compare_parser.add_argument("--fixture-directory", type=Path)
-    compare_parser.add_argument("--baseline", default="stale")
-    compare_parser.add_argument("--candidate", default="correction")
+    compare_parser.add_argument("--baseline")
+    compare_parser.add_argument("--candidate")
+    compare_parser.add_argument("--baseline-program", type=Path)
+    compare_parser.add_argument("--candidate-program", type=Path)
     compare_parser.add_argument("--attempts", type=int, default=1)
     compare_parser.add_argument("--timeout-seconds", type=float, default=5)
     compare_parser.add_argument("--max-operations", type=int, default=100)
@@ -126,7 +130,7 @@ def main(argv: Sequence[str]) -> int:
 def _run(args) -> dict:
     document = load(args.scenario)
     budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
-    factory = _adapter_factory(args.adapter)
+    factory = _adapter_factory(args.adapter, args.program, "correction")
     evidence: list[dict] = []
 
     def evaluate() -> dict:
@@ -136,7 +140,7 @@ def _run(args) -> dict:
 
     summary = repeat(evaluate, args.attempts)
     report = {
-        "data_source": "synthetic scenario",
+        "data_source": "synthetic scenario with local executable" if args.program else "synthetic scenario",
         "scenario": document.scenario.name,
         "content_fingerprint": document.content_fingerprint,
         "budget": asdict(budget),
@@ -153,7 +157,12 @@ def _run(args) -> dict:
     return report
 
 
-def _adapter_factory(name: str):
+def _adapter_factory(name: str | None, program: Path | None = None, default: str = "correction"):
+    if program is not None:
+        if name is not None:
+            raise ValueError("select either a fixture adapter or a local program")
+        return lambda: ProcessSession(program)
+    name = name or default
     adapters = {"stale": StaleMemory, "correction": CorrectionMemory}
     memory_type = adapters.get(name)
     if memory_type is None:
@@ -170,8 +179,8 @@ def _compare(args) -> dict:
     budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
     report = compare_held_out(
         suite,
-        _adapter_factory(args.baseline),
-        _adapter_factory(args.candidate),
+        _adapter_factory(args.baseline, args.baseline_program, "stale"),
+        _adapter_factory(args.candidate, args.candidate_program, "correction"),
         budget,
         args.attempts,
     )
@@ -187,7 +196,10 @@ def _compare(args) -> dict:
         for item in report.comparisons
     ]
     return {
-        "data_source": "synthetic manifests",
+        "data_source": (
+            "synthetic manifests with local executable"
+            if args.baseline_program or args.candidate_program else "synthetic manifests"
+        ),
         "development_manifest": suite.development.name,
         "held_out_manifest": suite.held_out.name,
         "budget": asdict(report.budget),
