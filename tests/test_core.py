@@ -90,6 +90,14 @@ class ScenarioLoadingTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "unsupported"):
             load(wrong_version)
+        for version in (True, [], 1.0):
+            path = self.write(json.dumps({
+                "version": version, "name": "x",
+                "events": [{"person": "Mina", "field": "city", "value": "Rome"}],
+                "probe": {"person": "Mina", "field": "city"}, "expected": "Rome",
+            }))
+            with self.subTest(version=version), self.assertRaisesRegex(ValueError, "unsupported"):
+                load(path)
         malformed = self.write("{")
         with self.assertRaisesRegex(ValueError, "valid JSON"):
             load(malformed)
@@ -128,6 +136,11 @@ class ScenarioLoadingTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "must be null"):
             load(path)
+        malformed = self.write(
+            '{"version":2,"name":"bad","events":[{"person":"Mina","field":"city","operation":[],"value":"Oslo"}],"probe":{"person":"Mina","field":"city"},"expected":"Oslo"}'
+        )
+        with self.assertRaisesRegex(ValueError, "operation must be"):
+            load(malformed)
 
     def test_rejects_scenarios_larger_than_the_read_limit(self):
         directory = TemporaryDirectory()
@@ -673,6 +686,24 @@ class HeldOutTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ValueError, "duplicate key 'name'"):
             load_manifest(manifest, self.examples)
+
+    def test_manifest_rejects_boolean_version_and_paths_outside_fixture_root(self):
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        manifest = root / "manifest.json"
+        manifest.write_text('{"version":true,"name":"set","scenarios":["case.json"]}')
+        with self.assertRaisesRegex(ValueError, "unsupported manifest version"):
+            load_manifest(manifest, root)
+
+        manifest.write_text('{"version":1,"name":"set","scenarios":[".."]}')
+        with self.assertRaisesRegex(ValueError, "plain file names"):
+            load_manifest(manifest, root)
+
+        (root / "case.json").symlink_to(self.examples / "correction.json")
+        manifest.write_text('{"version":1,"name":"set","scenarios":["case.json"]}')
+        with self.assertRaisesRegex(ValueError, "escapes fixture directory"):
+            load_manifest(manifest, root)
 
     def test_manifest_read_is_bounded(self):
         directory = TemporaryDirectory()

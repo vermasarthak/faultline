@@ -46,19 +46,28 @@ def load_manifest(path: str | Path, fixture_directory: str | Path | None = None)
     payload = decode_object(read_limited(manifest_path, MAX_MANIFEST_BYTES, "manifest"), "manifest")
     if not isinstance(payload, dict) or set(payload) != {"version", "name", "scenarios"}:
         raise ValueError("manifest keys must be exactly version, name, and scenarios")
-    if payload["version"] != MANIFEST_VERSION:
+    if type(payload["version"]) is not int or payload["version"] != MANIFEST_VERSION:
         raise ValueError(f"unsupported manifest version {payload['version']!r}")
     if not isinstance(payload["name"], str) or not payload["name"].strip():
         raise ValueError("manifest.name must be a nonempty string")
     files = payload["scenarios"]
     if not isinstance(files, list) or not files:
         raise ValueError("manifest.scenarios must be a nonempty list")
-    if any(not isinstance(item, str) or Path(item).name != item for item in files):
+    if any(
+        not isinstance(item, str) or item in {".", ".."} or Path(item).name != item
+        for item in files
+    ):
         raise ValueError("manifest scenario names must be plain file names")
     if len(set(files)) != len(files):
         raise ValueError("manifest cannot repeat a scenario")
-    documents = tuple(load(root / item) for item in files)
-    return ScenarioManifest(payload["name"], documents)
+    resolved_root = root.resolve()
+    documents = []
+    for item in files:
+        scenario_path = (root / item).resolve()
+        if not scenario_path.is_relative_to(resolved_root):
+            raise ValueError("manifest scenario path escapes fixture directory")
+        documents.append(load(scenario_path))
+    return ScenarioManifest(payload["name"], tuple(documents))
 
 
 def load_suite(

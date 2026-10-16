@@ -26,7 +26,7 @@ def load(path: str | Path) -> ScenarioDocument:
         raise ValueError("scenario root must be an object")
     _exact_keys(payload, {"version", "name", "events", "probe", "expected"}, "scenario")
     version = payload["version"]
-    if version not in {1, SCHEMA_VERSION}:
+    if type(version) is not int or version not in (1, SCHEMA_VERSION):
         raise ValueError(f"unsupported scenario version {payload['version']!r}")
     name = _text(payload["name"], "scenario.name")
     expected = _expected(payload["expected"], version)
@@ -53,7 +53,7 @@ def _event(value: object, index: int, version: int) -> Event:
         )
     _exact_keys(value, {"person", "field", "operation", "value"}, name)
     operation = value["operation"]
-    if operation not in {"write", "delete"}:
+    if not isinstance(operation, str) or operation not in {"write", "delete"}:
         raise ValueError(f"{name}.operation must be write or delete")
     event_value = value["value"]
     if operation == "write":
