@@ -27,3 +27,7 @@ The snapshot protocol is cheap and useful for checking final state semantics, bu
 ## Balance generated recall and absence probes
 
 The first generator sampled a probe uniformly from twelve person and field pairs. Sparse histories therefore favored expected absence, allowing an adapter that always returned unknown to pass many cases. Generator version two alternates between present and absent expected states, favoring corrected or deleted keys when available. If an event history cannot provide the required state, it changes its final event and recomputes the oracle. This is a deliberate coverage policy rather than a model quality estimate. The original generator remains selectable by version so old sweep fingerprints can still be reproduced. Revisit this policy when adding richer memory semantics or representative external evaluation data.
+
+## Partition held out cases by test content
+
+Receipt fingerprints include the scenario name for stable historical evidence. A split based on those fingerprints alone permits the same test content in development and held out manifests under different names. Manifest validation instead compares exact events, probe, and expected answer, and rejects repeated content within one manifest too. This closes accidental or trivial renamed overlap; it does not detect paraphrased questions, related facts, or contamination of a model trained on public fixtures.

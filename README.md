@@ -64,7 +64,7 @@ Each store instance owns one SQLite connection and must remain in its creating t
 
 ## Held out repair checks
 
-The development and held out manifests partition the synthetic fixtures by canonical scenario fingerprint. A suite refuses overlap. `compare_held_out` runs baseline and candidate over the held out manifest with the same declared budget configuration for each evaluation and emits results in manifest order. The held out fixtures are public and synthetic. Held out here means excluded from repair selection, not secret or representative of external model behavior.
+The development and held out manifests partition the synthetic fixtures by exact test content, excluding the scenario display name. A suite refuses overlap even if a case is renamed, and a manifest refuses repeated content. Receipt fingerprints still include the name. `compare_held_out` runs baseline and candidate over the held out manifest with the same declared budget configuration for each evaluation and emits results in manifest order. The held out fixtures are public and synthetic. Held out here means excluded from repair selection, not secret or representative of external model behavior.
 
 ## Failure minimization
 

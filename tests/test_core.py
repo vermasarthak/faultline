@@ -793,6 +793,26 @@ class HeldOutTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "cannot overlap"):
             load_suite(development, held_out, self.examples)
 
+    def test_renaming_a_case_cannot_bypass_the_held_out_split(self):
+        directory = TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = Path(directory.name)
+        original = json.loads((self.examples / "deletion.json").read_text())
+        renamed = {**original, "name": "same case under another name"}
+        (root / "original.json").write_text(json.dumps(original))
+        (root / "renamed.json").write_text(json.dumps(renamed))
+        development = root / "development.json"
+        held_out = root / "held-out.json"
+        development.write_text(json.dumps({"version": 1, "name": "development", "scenarios": ["original.json"]}))
+        held_out.write_text(json.dumps({"version": 1, "name": "held out", "scenarios": ["renamed.json"]}))
+        self.assertNotEqual(load(root / "original.json").scenario.fingerprint(), load(root / "renamed.json").scenario.fingerprint())
+        with self.assertRaisesRegex(ValueError, "cannot overlap"):
+            load_suite(development, held_out, root)
+
+        held_out.write_text(json.dumps({"version": 1, "name": "held out", "scenarios": ["original.json", "renamed.json"]}))
+        with self.assertRaisesRegex(ValueError, "cannot repeat a scenario"):
+            load_manifest(held_out, root)
+
     def test_manifest_rejects_duplicate_json_keys(self):
         directory = TemporaryDirectory()
         self.addCleanup(directory.cleanup)

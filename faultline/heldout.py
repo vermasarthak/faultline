@@ -67,6 +67,8 @@ def load_manifest(path: str | Path, fixture_directory: str | Path | None = None)
         if not scenario_path.is_relative_to(resolved_root):
             raise ValueError("manifest scenario path escapes fixture directory")
         documents.append(load(scenario_path))
+    if len({_case_identity(document.scenario) for document in documents}) != len(documents):
+        raise ValueError("manifest cannot repeat a scenario under another name")
     return ScenarioManifest(payload["name"], tuple(documents))
 
 
@@ -77,11 +79,16 @@ def load_suite(
 ) -> HeldOutSuite:
     development = load_manifest(development_manifest, fixture_directory)
     held_out = load_manifest(held_out_manifest, fixture_directory)
-    development_fingerprints = {document.scenario.fingerprint() for document in development.documents}
-    held_out_fingerprints = {document.scenario.fingerprint() for document in held_out.documents}
-    if development_fingerprints & held_out_fingerprints:
+    development_cases = {_case_identity(document.scenario) for document in development.documents}
+    held_out_cases = {_case_identity(document.scenario) for document in held_out.documents}
+    if development_cases & held_out_cases:
         raise ValueError("development and held out manifests cannot overlap")
     return HeldOutSuite(development, held_out)
+
+
+def _case_identity(scenario: Scenario) -> tuple:
+    """Exact test content, excluding the display name used by receipt fingerprints."""
+    return scenario.events, scenario.probe, scenario.expected
 
 
 def compare_held_out(
