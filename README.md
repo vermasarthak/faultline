@@ -37,7 +37,7 @@ Each bounded run opens and closes a fresh adapter session. Adapters receive even
 
 ## Durable evidence
 
-`EvidenceStore` persists completed evidence in a local SQLite database. It accepts only schema version one receipts with recognized statuses and string or null answers. It uses WAL mode, full synchronous commits, a versioned schema, and an explicit immediate write transaction. A successful `record` call has either committed one complete row or raised an error. A process interruption before commit leaves no partial row. This is local single machine storage. It is not encrypted, authenticated, or a multi tenant service.
+`EvidenceStore` persists completed evidence in a local SQLite database. It accepts only schema version one receipts with recognized statuses, valid fingerprints, and outcomes consistent with their expected and actual answers. It uses WAL mode, full synchronous commits, a versioned schema, and an explicit immediate write transaction. A successful `record` call has either committed one complete row or raised an error. A process interruption before commit leaves no partial row. This is local single machine storage. It is not encrypted, authenticated, or a multi tenant service.
 
 Each store instance owns one SQLite connection and must remain in its creating thread. Separate store instances can write to the same database. SQLite serializes these writes with a five second busy timeout. Connection setup also retries WAL activation during concurrent first use. The concurrent writer test covers twelve independent local connections. This is not a load guarantee.
 

@@ -243,11 +243,23 @@ def _validated_evidence(evidence: dict) -> dict:
         raise ValueError("evidence.expected must be a string or null")
     if evidence["actual"] is not None and not isinstance(evidence["actual"], str):
         raise ValueError("evidence.actual must be a string or null")
+    _validate_outcome(evidence["status"], evidence["expected"], evidence["actual"])
     try:
         json.dumps(evidence, sort_keys=True, separators=(",", ":"))
     except (TypeError, ValueError) as error:
         raise ValueError("evidence must be JSON serializable") from error
     return evidence
+
+
+def _validate_outcome(status: str, expected: str | None, actual: str | None) -> None:
+    if status == "pass" and actual != expected:
+        raise ValueError("pass evidence must match its expected answer")
+    if status == "fail" and (actual is None or actual == expected):
+        raise ValueError("fail evidence must contain a different answer")
+    if status == "unknown" and (expected is None or actual is not None):
+        raise ValueError("unknown evidence must omit a known expected answer")
+    if status not in {"pass", "fail", "unknown"} and actual is not None:
+        raise ValueError("execution outcome evidence must not contain an answer")
 
 
 def _fingerprint(value: object, name: str) -> None:

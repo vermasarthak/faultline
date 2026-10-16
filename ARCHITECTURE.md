@@ -23,4 +23,4 @@ Adapter deadlines are cooperative. Faultline can detect that a synchronous adapt
 
 ## Trust boundary
 
-Scenarios and adapters are local untrusted inputs. Strict scenario parsing rejects unknown schema fields. Adapter output is checked before evidence is recorded. Expected answers never cross the adapter boundary. Provider exception messages are not included in evidence. The current release includes no credential, network, authentication, tenant, or tool execution boundary.
+Scenarios and adapters are local untrusted inputs. Strict scenario parsing rejects unknown schema fields. Adapter output is checked before evidence is recorded, and durable receipts must have outcomes consistent with their expected and actual answers. Expected answers never cross the adapter boundary. Provider exception messages are not included in evidence. The current release includes no credential, network, authentication, tenant, or tool execution boundary.

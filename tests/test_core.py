@@ -368,6 +368,9 @@ os._exit(0)
             ({**self.evidence, "status": "unknown status"}, "status"),
             ({**self.evidence, "expected": 3}, "expected"),
             ({**self.evidence, "actual": 3}, "actual"),
+            ({**self.evidence, "actual": "Rome"}, "pass evidence"),
+            ({**self.evidence, "status": "unknown", "actual": "Oslo"}, "unknown evidence"),
+            ({**self.evidence, "status": "provider_error", "actual": "Oslo"}, "execution outcome"),
         )
         for evidence, message in invalid_cases:
             with self.subTest(message=message), self.assertRaisesRegex(ValueError, message):
@@ -443,6 +446,21 @@ os._exit(0)
         with self.assertRaisesRegex(ValueError, "stored evidence JSON is corrupt"):
             store.get("corrupt")
         with self.assertRaisesRegex(ValueError, "stored evidence JSON is corrupt"):
+            store.verify_integrity()
+
+    def test_semantically_corrupt_receipt_is_explicitly_detected(self):
+        store = EvidenceStore(self.path)
+        self.addCleanup(store.close)
+        store.record(self.evidence, self.content_fingerprint, run_id="semantic")
+        corrupted = {**self.evidence, "actual": "Rome"}
+        with store.write_transaction() as connection:
+            connection.execute(
+                "UPDATE runs SET evidence_json = ? WHERE run_id = ?",
+                (json.dumps(corrupted), "semantic"),
+            )
+        with self.assertRaisesRegex(ValueError, "stored evidence payload is corrupt"):
+            store.get("semantic")
+        with self.assertRaisesRegex(ValueError, "stored evidence payload is corrupt"):
             store.verify_integrity()
 
     def test_corrupt_receipt_metadata_is_explicitly_detected(self):
