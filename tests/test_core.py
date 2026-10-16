@@ -760,6 +760,24 @@ class CliTests(unittest.TestCase):
         self.assertEqual([item["scenario"] for item in report["comparisons"]], ["invented fact", "deletion"])
         self.assertEqual(report["comparisons"][1]["pass_rate_delta"], 1.0)
 
+    def test_minimize_reports_a_smaller_synthetic_counterexample(self):
+        scenario = Path(self.directory.name) / "distractor.json"
+        scenario.write_text(
+            '{"version":1,"name":"distractor","events":[{"person":"Nia","field":"city","value":"Berlin"},{"person":"Mina","field":"city","value":"Rome"},{"person":"Mina","field":"city","value":"Oslo"}],"probe":{"person":"Mina","field":"city"},"expected":"Oslo"}'
+        )
+        process = subprocess.run(
+            [sys.executable, "-m", "faultline", "minimize", "--scenario", str(scenario), "--adapter", "stale"],
+            cwd=self.root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(process.returncode, 0, process.stderr)
+        report = json.loads(process.stdout)
+        self.assertEqual(report["target_status"], "fail")
+        self.assertEqual(report["removed_events"], 1)
+        self.assertEqual(len(report["minimized"]["events"]), 2)
+
     def test_maintenance_commands_do_not_create_a_missing_database(self):
         commands = (
             ("show", "--run-id", "missing"),

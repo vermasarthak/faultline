@@ -12,6 +12,7 @@ from .__main__ import CorrectionMemory, StaleMemory
 from .core import Event, Probe, Scenario, run
 from .execution import Budget, Recall, run_bounded
 from .heldout import compare_held_out, load_suite
+from .minimize import minimize_failure
 from .scenario import load
 from .store import EvidenceStore
 from .trials import TrialSummary, repeat
@@ -53,6 +54,13 @@ def main(argv: Sequence[str]) -> int:
     compare_parser.add_argument("--timeout-seconds", type=float, default=5)
     compare_parser.add_argument("--max-operations", type=int, default=100)
     compare_parser.add_argument("--max-cost-microusd", type=int, default=0)
+    minimize_parser = commands.add_parser("minimize", help="reduce a reproducible synthetic failure")
+    minimize_parser.add_argument("--scenario", required=True, type=Path)
+    minimize_parser.add_argument("--adapter", default="stale")
+    minimize_parser.add_argument("--max-evaluations", type=int, default=1_000)
+    minimize_parser.add_argument("--timeout-seconds", type=float, default=5)
+    minimize_parser.add_argument("--max-operations", type=int, default=100)
+    minimize_parser.add_argument("--max-cost-microusd", type=int, default=0)
     show_parser = commands.add_parser("show", help="show a persisted evidence receipt")
     show_parser.add_argument("--database", required=True, type=Path)
     show_parser.add_argument("--run-id", required=True)
@@ -72,6 +80,8 @@ def main(argv: Sequence[str]) -> int:
             report = _run(args)
         elif args.command == "compare":
             report = _compare(args)
+        elif args.command == "minimize":
+            report = _minimize(args)
         elif args.command == "show":
             report = _show(args)
         elif args.command == "delete":
@@ -158,6 +168,26 @@ def _compare(args) -> dict:
             }
             for item in report.comparisons
         ],
+    }
+
+
+def _minimize(args) -> dict:
+    document = load(args.scenario)
+    budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
+    result = minimize_failure(
+        document.scenario,
+        lambda scenario: run_bounded(scenario, _adapter_factory(args.adapter), budget),
+        args.max_evaluations,
+    )
+    return {
+        "data_source": "synthetic scenario",
+        "content_fingerprint": document.content_fingerprint,
+        "budget": asdict(budget),
+        "target_status": result.target_status,
+        "evaluations": result.evaluations,
+        "removed_events": result.removed_events,
+        "original": asdict(result.original),
+        "minimized": asdict(result.minimized),
     }
 
 
