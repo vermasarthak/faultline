@@ -1,6 +1,7 @@
 """Release packaging contract tests."""
 
 from pathlib import Path
+import re
 from tempfile import TemporaryDirectory
 import tomllib
 import unittest
@@ -51,3 +52,12 @@ class PackagingTests(unittest.TestCase):
                 archive.writestr("faultline/__init__.py", "")
             with self.assertRaisesRegex(ValueError, "missing=.*core.py"):
                 verify_wheel(root, missing)
+
+    def test_workflow_actions_are_pinned_to_commit_shas(self):
+        root = Path(__file__).parent.parent
+        workflow = (root / ".github/workflows/tests.yml").read_text()
+        uses = re.findall(r"^\s*- uses: ([^\s#]+)", workflow, re.MULTILINE)
+        self.assertGreater(len(uses), 0)
+        for action in uses:
+            with self.subTest(action=action):
+                self.assertRegex(action, r"^[^@]+@[0-9a-f]{40}$")
