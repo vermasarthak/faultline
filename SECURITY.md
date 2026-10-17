@@ -1,12 +1,10 @@
 # Security
 
-Faultline is a local developer tool with an optional outbound HTTP adapter. It can add a bearer authorization header from a named environment variable but does not store that credential. It does not provide an inbound service, user authorization, or tenant isolation. Do not treat its evidence database as a multi tenant system.
+Faultline is a local developer tool. It has no HTTP adapter, API credential handling, inbound service, user authorization, or tenant isolation. Do not treat its evidence database as a multi tenant system.
 
 Scenario parsing uses strict schemas and rejects unknown fields. Held out manifest entries must resolve inside their fixture directory, including when a local symlink is present. Adapter output is validated before it becomes evidence. Adapter exceptions are classified by type without recording their message, which reduces accidental provider error leakage.
 
 `--program`, `--baseline-program`, and `--candidate-program` execute the selected local file with the user's permissions. Use only a trusted executable. The process receives scenario events and probes, may read local files or use the network, and is not sandboxed. The expected answer stays in Faultline. Faultline discards standard error, caps standard output, and kills the process group on timeout, but these controls do not stop a malicious program from accessing data or spending money. Keep secrets outside scenario files and do not attach an unapproved paid provider.
-
-`--endpoint`, `--baseline-endpoint`, and `--candidate-endpoint` send scenario events and probes to the selected service. Nonlocal endpoints require HTTPS. Credentials, query strings, fragments, and redirects are rejected to reduce accidental credential disclosure. Bearer tokens are loaded only from explicitly named environment variables and are omitted from output and receipts. The endpoint may still log or retain submitted data, lie about cost, spend beyond the client budget, or behave differently after evaluation. Use only reviewed scenario data and enforce provider side spending and retention controls.
 
 The continuity protocol passes a temporary directory path to each process in a trial. Faultline removes it after the attempt, but that is logical cleanup, not secure erasure. The executable can copy data elsewhere, and an abnormal host shutdown can leave a temporary directory behind. Do not put private user data into synthetic scenarios.
 

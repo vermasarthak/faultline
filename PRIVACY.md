@@ -2,7 +2,7 @@
 
 Faultline ships only synthetic scenarios. Do not add private conversations, customer records, proprietary prompts, API keys, or provider transcripts to this repository or its example files.
 
-Local SQLite receipts may contain scenario names, expected values, observed values, error categories, timestamps, and fingerprints. Newly created evidence databases use owner only permissions on POSIX systems. SQLite WAL and SHM files inherit that protection. Faultline does not change permissions on an existing database, so review older files before relying on this default. Keep the parent directory and backups protected too. File permissions are not encryption. Faultline sends no telemetry. When an HTTP adapter is selected, it sends scenario events and probes to that endpoint; Faultline cannot control the endpoint's logs or retention.
+Local SQLite receipts may contain scenario names, expected values, observed values, error categories, timestamps, and fingerprints. Newly created evidence databases use owner only permissions on POSIX systems. SQLite WAL and SHM files inherit that protection. Faultline does not change permissions on an existing database, so review older files before relying on this default. Keep the parent directory and backups protected too. File permissions are not encryption. Faultline sends no telemetry and has no network adapter.
 
 When `run` uses both `--attempts` and `--database`, every attempt becomes a receipt. Large repeat counts grow the database accordingly. Use the reported `stored_run_ids` to inspect or delete individual attempts, and apply retention deliberately.
 

@@ -22,3 +22,23 @@ jobs:
       - run: python -m pip wheel . --wheel-dir dist
       - run: python -m pip install --force-reinstall dist/*.whl
       - run: cd /tmp && faultline --help
+
+  chroma-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - run: python -m pip install '.[chroma]'
+      - run: >-
+          python -m faultline compare
+          --development-manifest examples/manifests/development.json
+          --held-out-manifest examples/manifests/held-out.json
+          --baseline stale
+          --candidate-program examples/chroma_continuity.py
+          --program-protocol continuity
+          --timeout-seconds 60
+          --fail-on-regression

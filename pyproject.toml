@@ -23,5 +23,8 @@ classifiers = [
 [project.scripts]
 faultline = "faultline.__main__:main"
 
+[project.optional-dependencies]
+chroma = ["chromadb==1.5.9"]
+
 [tool.setuptools]
 packages = ["faultline"]
