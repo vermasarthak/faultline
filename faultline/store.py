@@ -307,6 +307,12 @@ def _validated_evidence(evidence: dict) -> dict:
             _fingerprint(adapter["sha256"], "evidence.adapter.sha256")
             if "protocol" in adapter and adapter["protocol"] != "continuity_v2":
                 raise ValueError("evidence.adapter.protocol is invalid")
+        elif adapter.get("kind") == "http_endpoint" and set(adapter) == {
+            "kind", "sha256", "protocol"
+        }:
+            _fingerprint(adapter["sha256"], "evidence.adapter.sha256")
+            if adapter["protocol"] != "snapshot_v1":
+                raise ValueError("evidence.adapter.protocol is invalid")
         else:
             raise ValueError("evidence.adapter has invalid fields")
     if ("events" in evidence) != ("probe" in evidence):

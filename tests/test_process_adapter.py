@@ -1,18 +1,162 @@
 """Failure tests for the local executable boundary."""
 
 import json
+import os
 from hashlib import sha256
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import subprocess
 import sys
 from tempfile import TemporaryDirectory
+from threading import Thread
 from time import monotonic, sleep
 import unittest
 
 from faultline.core import Event, Probe, Scenario
 from faultline.execution import Budget, run_bounded
+from faultline.http_adapter import HttpSnapshotSession, normalize_endpoint
 from faultline.process_adapter import ContinuitySession, ProcessSession
 from faultline.store import EvidenceStore
+
+
+class _AdapterHandler(BaseHTTPRequestHandler):
+    requests = []
+    response = {"version": 1, "value": "Oslo", "cost_microusd": 7}
+
+    def do_POST(self):
+        body = self.rfile.read(int(self.headers["Content-Length"]))
+        type(self).requests.append((self.path, self.headers.get("Authorization"), json.loads(body)))
+        if self.path == "/redirect":
+            self.send_response(307)
+            self.send_header("Location", "/evaluate")
+            self.end_headers()
+            return
+        if self.path == "/slow":
+            self.send_response(200)
+            self.end_headers()
+            for byte in json.dumps(type(self).response).encode():
+                try:
+                    self.wfile.write(bytes((byte,)))
+                    self.wfile.flush()
+                except BrokenPipeError:
+                    return
+                sleep(0.02)
+            return
+        encoded = json.dumps(type(self).response).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(encoded)))
+        self.end_headers()
+        self.wfile.write(encoded)
+
+    def log_message(self, format, *args):
+        pass
+
+
+class HttpAdapterTests(unittest.TestCase):
+    def setUp(self):
+        _AdapterHandler.requests = []
+        _AdapterHandler.response = {"version": 1, "value": "Oslo", "cost_microusd": 7}
+        self.server = ThreadingHTTPServer(("127.0.0.1", 0), _AdapterHandler)
+        self.thread = Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+        self.endpoint = f"http://127.0.0.1:{self.server.server_port}/evaluate"
+        self.scenario = Scenario(
+            "correction",
+            (Event("Mina", "city", "Rome"), Event("Mina", "city", "Oslo")),
+            Probe("Mina", "city"),
+            "Oslo",
+        )
+
+    def test_remote_snapshot_hides_expected_and_sends_bearer_token(self):
+        result = run_bounded(
+            self.scenario,
+            lambda: HttpSnapshotSession(self.endpoint, "secret-token"),
+            Budget(3, 7, 2),
+        )
+        self.assertEqual(result["status"], "pass")
+        self.assertEqual(result["cost_microusd"], 7)
+        path, authorization, request = _AdapterHandler.requests[0]
+        self.assertEqual(path, "/evaluate")
+        self.assertEqual(authorization, "Bearer secret-token")
+        self.assertEqual(set(request), {"version", "events", "probe"})
+        self.assertNotIn("expected", request)
+
+    def test_remote_snapshot_rejects_malformed_response(self):
+        _AdapterHandler.response = {"version": 1, "value": "Oslo", "cost_microusd": True}
+        result = run_bounded(
+            self.scenario,
+            lambda: HttpSnapshotSession(self.endpoint),
+            Budget(3, 0, 2),
+        )
+        self.assertEqual(result["status"], "invalid_response")
+
+    def test_remote_snapshot_rejects_redirects_and_enforces_overall_deadline(self):
+        redirect = run_bounded(
+            self.scenario,
+            lambda: HttpSnapshotSession(self.endpoint.replace("/evaluate", "/redirect")),
+            Budget(3, 0, 2),
+        )
+        self.assertEqual(redirect["status"], "provider_error")
+        started = monotonic()
+        slow = run_bounded(
+            self.scenario,
+            lambda: HttpSnapshotSession(self.endpoint.replace("/evaluate", "/slow")),
+            Budget(3, 0, 0.1),
+        )
+        self.assertEqual(slow["status"], "timeout")
+        self.assertLess(monotonic() - started, 0.5)
+
+    def test_endpoint_rejects_secret_bearing_and_insecure_remote_urls(self):
+        for endpoint in (
+            "https://user:secret@example.com/evaluate",
+            "https://example.com/evaluate?token=secret",
+            "https://example.com/evaluate#secret",
+            "http://example.com/evaluate",
+        ):
+            with self.subTest(endpoint=endpoint), self.assertRaises(ValueError):
+                normalize_endpoint(endpoint)
+
+    def test_remote_adapter_identity_can_be_persisted(self):
+        result = run_bounded(
+            self.scenario,
+            lambda: HttpSnapshotSession(self.endpoint),
+            Budget(3, 7, 2),
+        )
+        result["adapter"] = {
+            "kind": "http_endpoint",
+            "sha256": sha256(self.endpoint.encode()).hexdigest(),
+            "protocol": "snapshot_v1",
+        }
+        with TemporaryDirectory() as directory:
+            store = EvidenceStore(Path(directory) / "evidence.db")
+            stored = store.record(result, "a" * 64)
+            self.assertEqual(store.get(stored.run_id).evidence["adapter"], result["adapter"])
+            store.close()
+
+    def test_cli_remote_run_reports_hashed_identity_without_token(self):
+        environment = dict(os.environ, FAULTLINE_TEST_TOKEN="secret-token")
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "faultline", "run",
+                "--scenario", "examples/correction.json",
+                "--endpoint", self.endpoint,
+                "--auth-token-env", "FAULTLINE_TEST_TOKEN",
+                "--max-cost-microusd", "7",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=environment,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["last_evidence"]["status"], "pass")
+        self.assertEqual(report["adapter"]["kind"], "http_endpoint")
+        self.assertNotIn(self.endpoint, result.stdout)
+        self.assertNotIn("secret-token", result.stdout)
 
 
 class ProcessAdapterTests(unittest.TestCase):

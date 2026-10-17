@@ -7,6 +7,7 @@ import json
 from itertools import islice
 from pathlib import Path
 import platform
+import os
 from time import perf_counter
 from typing import Sequence
 
@@ -15,6 +16,7 @@ from .core import Event, Probe, Scenario, run
 from .execution import Budget, Recall, run_bounded
 from .generate import GENERATOR_VERSION, iter_scenarios
 from .heldout import compare_held_out, load_suite
+from .http_adapter import HttpSnapshotSession, normalize_endpoint
 from .minimize import minimize_failure
 from .process_adapter import ContinuitySession, ProcessSession
 from .scenario import load
@@ -44,6 +46,8 @@ def main(argv: Sequence[str]) -> int:
     run_parser.add_argument("--scenario", required=True, type=Path)
     run_parser.add_argument("--adapter")
     run_parser.add_argument("--program", type=Path)
+    run_parser.add_argument("--endpoint")
+    run_parser.add_argument("--auth-token-env")
     run_parser.add_argument("--program-protocol", choices=("snapshot", "continuity"), default="snapshot")
     run_parser.add_argument("--attempts", type=int, default=1)
     run_parser.add_argument("--timeout-seconds", type=float, default=5)
@@ -140,10 +144,29 @@ def main(argv: Sequence[str]) -> int:
 def _run(args) -> dict:
     document = load(args.scenario)
     budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
+    selected = sum(value is not None for value in (args.adapter, args.program, args.endpoint))
+    if selected > 1:
+        raise ValueError("select only one fixture adapter, local program, or HTTP endpoint")
+    if args.auth_token_env is not None and args.endpoint is None:
+        raise ValueError("auth token environment variable requires an HTTP endpoint")
     if args.program_protocol == "continuity" and (args.program is None or args.adapter is not None):
         raise ValueError("continuity protocol requires a local program and no fixture adapter")
-    adapter = _adapter_identity(args.adapter, args.program, "correction", args.program_protocol)
-    factory = _adapter_factory(args.adapter, args.program, "correction", args.program_protocol)
+    if args.endpoint is not None:
+        endpoint = normalize_endpoint(args.endpoint)
+        token = None
+        if args.auth_token_env is not None:
+            token = os.environ.get(args.auth_token_env)
+            if not token:
+                raise ValueError("auth token environment variable is missing or empty")
+        adapter = {
+            "kind": "http_endpoint",
+            "sha256": sha256(endpoint.encode("utf-8")).hexdigest(),
+            "protocol": "snapshot_v1",
+        }
+        factory = lambda: HttpSnapshotSession(endpoint, token)
+    else:
+        adapter = _adapter_identity(args.adapter, args.program, "correction", args.program_protocol)
+        factory = _adapter_factory(args.adapter, args.program, "correction", args.program_protocol)
     evidence: list[dict] = []
 
     def evaluate() -> dict:
@@ -155,7 +178,10 @@ def _run(args) -> dict:
     summary = repeat(evaluate, args.attempts)
     _check_program_unchanged(args.program, adapter)
     report = {
-        "data_source": "synthetic scenario with local executable" if args.program else "synthetic scenario",
+        "data_source": (
+            "synthetic scenario with remote HTTP adapter" if args.endpoint else
+            "synthetic scenario with local executable" if args.program else "synthetic scenario"
+        ),
         "scenario": document.scenario.name,
         "content_fingerprint": document.content_fingerprint,
         "budget": asdict(budget),
