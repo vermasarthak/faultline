@@ -292,8 +292,14 @@ def _validated_evidence(evidence: dict) -> dict:
         or evidence["error_stage"] not in {"open", "observe", "recall", "close"}
     ):
         raise ValueError("evidence.error_stage is not recognized")
-    if ("error_type" in evidence or "error_stage" in evidence) and evidence["status"] != "provider_error":
+    has_error_type = "error_type" in evidence
+    has_error_stage = "error_stage" in evidence
+    if has_error_type != has_error_stage:
+        raise ValueError("evidence error_type and error_stage must appear together")
+    if (has_error_type or has_error_stage) and evidence["status"] != "provider_error":
         raise ValueError("error fields require provider_error status")
+    if evidence["status"] == "provider_error" and not has_error_type:
+        raise ValueError("provider_error evidence requires error_type and error_stage")
     if "adapter" in evidence:
         adapter = evidence["adapter"]
         if not isinstance(adapter, dict):
@@ -306,12 +312,6 @@ def _validated_evidence(evidence: dict) -> dict:
         ):
             _fingerprint(adapter["sha256"], "evidence.adapter.sha256")
             if "protocol" in adapter and adapter["protocol"] != "continuity_v2":
-                raise ValueError("evidence.adapter.protocol is invalid")
-        elif adapter.get("kind") == "http_endpoint" and set(adapter) == {
-            "kind", "sha256", "protocol"
-        }:
-            _fingerprint(adapter["sha256"], "evidence.adapter.sha256")
-            if adapter["protocol"] != "snapshot_v1":
                 raise ValueError("evidence.adapter.protocol is invalid")
         else:
             raise ValueError("evidence.adapter has invalid fields")

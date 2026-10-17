@@ -579,8 +579,23 @@ os._exit(0)
             ({**self.evidence, "operations": -1}, "operations"),
             ({**self.evidence, "cost_microusd": True}, "cost_microusd"),
             ({**self.evidence, "error_stage": []}, "error_stage"),
-            ({**self.evidence, "error_type": "TimeoutError"}, "provider_error"),
+            ({**self.evidence, "error_type": "TimeoutError"}, "must appear together"),
+            ({**self.evidence, "status": "provider_error", "actual": None}, "requires error_type"),
+            ({
+                **self.evidence,
+                "status": "provider_error",
+                "actual": None,
+                "error_type": "RuntimeError",
+            }, "must appear together"),
             ({**self.evidence, "adapter": {"kind": "local_program", "sha256": "bad"}}, "sha256"),
+            ({
+                **self.evidence,
+                "adapter": {
+                    "kind": "http_endpoint",
+                    "sha256": "a" * 64,
+                    "protocol": "snapshot_v1",
+                },
+            }, "adapter has invalid fields"),
             ({**self.evidence, "events": [{**self.evidence["events"][0], "note": "extra"}]}, "undeclared fields"),
             ({**self.evidence, "events": []}, "fingerprint"),
         )
@@ -780,8 +795,14 @@ class TrialTests(unittest.TestCase):
 
     def test_repeat_rejects_a_clock_regression(self):
         ticks = iter([1, 0])
-        with self.assertRaisesRegex(ValueError, "clock moved backwards"):
+        with self.assertRaisesRegex(ValueError, "finite nondecreasing"):
             repeat(lambda: self.evidence("pass"), 1, lambda: next(ticks))
+        for invalid in (float("nan"), float("inf"), float("-inf")):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(
+                ValueError, "finite nondecreasing"
+            ):
+                ticks = iter([0, invalid])
+                repeat(lambda: self.evidence("pass"), 1, lambda: next(ticks))
 
     def test_repeat_rejects_mixed_scenario_fingerprints(self):
         results = iter([

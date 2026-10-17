@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify that a built wheel contains exactly the tracked runtime modules."""
+"""Verify that a built wheel contains exactly the current source runtime modules."""
 
 from pathlib import Path
 import sys

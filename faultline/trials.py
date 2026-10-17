@@ -1,7 +1,7 @@
 """Repeated evaluation summaries and honest paired repair comparisons."""
 
 from dataclasses import dataclass
-from math import sqrt
+from math import isfinite, sqrt
 from time import monotonic
 from typing import Callable
 
@@ -83,8 +83,8 @@ def _evaluate_once(evaluate: Callable[[], dict], clock: Callable[[], float]) -> 
     started = clock()
     evidence = evaluate()
     elapsed = clock() - started
-    if elapsed < 0:
-        raise ValueError("clock moved backwards")
+    if not isfinite(elapsed) or elapsed < 0:
+        raise ValueError("clock must produce a finite nondecreasing duration")
     return evidence, elapsed
 
 

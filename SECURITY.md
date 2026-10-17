@@ -1,6 +1,6 @@
 # Security
 
-Faultline is a local developer tool. It has no HTTP adapter, API credential handling, inbound service, user authorization, or tenant isolation. Do not treat its evidence database as a multi tenant system.
+Faultline is a local developer tool. It has no HTTP adapter, API credential handling, inbound service, user authorization, or tenant isolation. Its evidence schema accepts only built in fixture and local executable adapter identities, so remote endpoint evidence cannot be written into a new receipt. Do not treat its evidence database as a multi tenant system.
 
 Scenario parsing uses strict schemas and rejects unknown fields. Held out manifest entries must resolve inside their fixture directory, including when a local symlink is present. Adapter output is validated before it becomes evidence. Adapter exceptions are classified by type without recording their message, which reduces accidental provider error leakage.
 
