@@ -25,7 +25,8 @@ class _AdapterHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         body = self.rfile.read(int(self.headers["Content-Length"]))
-        type(self).requests.append((self.path, self.headers.get("Authorization"), json.loads(body)))
+        request = json.loads(body)
+        type(self).requests.append((self.path, self.headers.get("Authorization"), request))
         if self.path == "/redirect":
             self.send_response(307)
             self.send_header("Location", "/evaluate")
@@ -42,7 +43,20 @@ class _AdapterHandler(BaseHTTPRequestHandler):
                     return
                 sleep(0.02)
             return
-        encoded = json.dumps(type(self).response).encode()
+        response = type(self).response
+        if self.path == "/broken":
+            response = {"version": 1, "value": "invented", "cost_microusd": 0}
+        elif self.path == "/latest":
+            key = (request["probe"]["person"], request["probe"]["field"])
+            values = {}
+            for event in request["events"]:
+                event_key = (event["person"], event["field"])
+                if event["operation"] == "delete":
+                    values.pop(event_key, None)
+                else:
+                    values[event_key] = event["value"]
+            response = {"version": 1, "value": values.get(key), "cost_microusd": 0}
+        encoded = json.dumps(response).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(encoded)))
@@ -157,6 +171,45 @@ class HttpAdapterTests(unittest.TestCase):
         self.assertEqual(report["adapter"]["kind"], "http_endpoint")
         self.assertNotIn(self.endpoint, result.stdout)
         self.assertNotIn("secret-token", result.stdout)
+
+    def test_cli_remote_repair_comparison_fails_closed_and_hides_endpoints(self):
+        root = Path(__file__).parent.parent
+        result = subprocess.run(
+            [
+                sys.executable, "-m", "faultline", "compare",
+                "--development-manifest", str(root / "examples/manifests/development.json"),
+                "--held-out-manifest", str(root / "examples/manifests/held-out.json"),
+                "--baseline-endpoint", self.endpoint.replace("/evaluate", "/broken"),
+                "--candidate-endpoint", self.endpoint.replace("/evaluate", "/latest"),
+                "--fail-on-regression",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(report["data_source"], "synthetic manifests with remote HTTP adapter")
+        self.assertEqual(report["regression_count"], 0)
+        self.assertTrue(all(item["verdict"] == "pass" for item in report["comparisons"]))
+        self.assertNotIn(self.endpoint, result.stdout)
+
+        outage = subprocess.run(
+            [
+                sys.executable, "-m", "faultline", "compare",
+                "--development-manifest", str(root / "examples/manifests/development.json"),
+                "--held-out-manifest", str(root / "examples/manifests/held-out.json"),
+                "--baseline-endpoint", self.endpoint.replace("/evaluate", "/latest"),
+                "--candidate-endpoint", self.endpoint.replace("/evaluate", "/redirect"),
+                "--fail-on-regression",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        self.assertEqual(outage.returncode, 1, outage.stderr)
+        outage_report = json.loads(outage.stdout)
+        self.assertGreater(outage_report["regression_count"], 0)
 
 
 class ProcessAdapterTests(unittest.TestCase):

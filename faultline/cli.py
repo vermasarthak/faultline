@@ -62,6 +62,10 @@ def main(argv: Sequence[str]) -> int:
     compare_parser.add_argument("--candidate")
     compare_parser.add_argument("--baseline-program", type=Path)
     compare_parser.add_argument("--candidate-program", type=Path)
+    compare_parser.add_argument("--baseline-endpoint")
+    compare_parser.add_argument("--candidate-endpoint")
+    compare_parser.add_argument("--baseline-auth-token-env")
+    compare_parser.add_argument("--candidate-auth-token-env")
     compare_parser.add_argument("--program-protocol", choices=("snapshot", "continuity"), default="snapshot")
     compare_parser.add_argument("--attempts", type=int, default=1)
     compare_parser.add_argument("--timeout-seconds", type=float, default=5)
@@ -144,29 +148,12 @@ def main(argv: Sequence[str]) -> int:
 def _run(args) -> dict:
     document = load(args.scenario)
     budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
-    selected = sum(value is not None for value in (args.adapter, args.program, args.endpoint))
-    if selected > 1:
-        raise ValueError("select only one fixture adapter, local program, or HTTP endpoint")
-    if args.auth_token_env is not None and args.endpoint is None:
-        raise ValueError("auth token environment variable requires an HTTP endpoint")
-    if args.program_protocol == "continuity" and (args.program is None or args.adapter is not None):
-        raise ValueError("continuity protocol requires a local program and no fixture adapter")
-    if args.endpoint is not None:
-        endpoint = normalize_endpoint(args.endpoint)
-        token = None
-        if args.auth_token_env is not None:
-            token = os.environ.get(args.auth_token_env)
-            if not token:
-                raise ValueError("auth token environment variable is missing or empty")
-        adapter = {
-            "kind": "http_endpoint",
-            "sha256": sha256(endpoint.encode("utf-8")).hexdigest(),
-            "protocol": "snapshot_v1",
-        }
-        factory = lambda: HttpSnapshotSession(endpoint, token)
-    else:
-        adapter = _adapter_identity(args.adapter, args.program, "correction", args.program_protocol)
-        factory = _adapter_factory(args.adapter, args.program, "correction", args.program_protocol)
+    if args.program_protocol == "continuity" and args.program is None:
+        raise ValueError("continuity protocol requires a local program")
+    adapter, factory = _selected_adapter(
+        args.adapter, args.program, args.endpoint, args.auth_token_env,
+        "correction", args.program_protocol,
+    )
     evidence: list[dict] = []
 
     def evaluate() -> dict:
@@ -231,6 +218,38 @@ def _adapter_identity(name: str | None, program: Path | None, default: str, prot
     return identity
 
 
+def _selected_adapter(
+    name: str | None,
+    program: Path | None,
+    endpoint_value: str | None,
+    auth_token_env: str | None,
+    default: str,
+    protocol: str,
+):
+    selected = sum(value is not None for value in (name, program, endpoint_value))
+    if selected > 1:
+        raise ValueError("select only one fixture adapter, local program, or HTTP endpoint")
+    if auth_token_env is not None and endpoint_value is None:
+        raise ValueError("auth token environment variable requires an HTTP endpoint")
+    if endpoint_value is None:
+        return (
+            _adapter_identity(name, program, default, protocol),
+            _adapter_factory(name, program, default, protocol),
+        )
+    endpoint = normalize_endpoint(endpoint_value)
+    token = None
+    if auth_token_env is not None:
+        token = os.environ.get(auth_token_env)
+        if not token:
+            raise ValueError("auth token environment variable is missing or empty")
+    identity = {
+        "kind": "http_endpoint",
+        "sha256": sha256(endpoint.encode("utf-8")).hexdigest(),
+        "protocol": "snapshot_v1",
+    }
+    return identity, lambda: HttpSnapshotSession(endpoint, token)
+
+
 def _check_program_unchanged(program: Path | None, identity: dict) -> None:
     protocol = "continuity" if identity.get("protocol") == "continuity_v2" else "snapshot"
     if program is not None and _adapter_identity(None, program, "", protocol) != identity:
@@ -249,13 +268,23 @@ def _compare(args) -> dict:
         args.fixture_directory,
     )
     budget = Budget(args.max_operations, args.max_cost_microusd, args.timeout_seconds)
+    if args.program_protocol == "continuity" and (
+        args.baseline_endpoint is not None or args.candidate_endpoint is not None
+    ):
+        raise ValueError("continuity protocol does not support HTTP endpoints")
     _require_continuity_program(args.program_protocol, args.baseline_program, args.candidate_program)
-    baseline_adapter = _adapter_identity(args.baseline, args.baseline_program, "stale", args.program_protocol)
-    candidate_adapter = _adapter_identity(args.candidate, args.candidate_program, "correction", args.program_protocol)
+    baseline_adapter, baseline_factory = _selected_adapter(
+        args.baseline, args.baseline_program, args.baseline_endpoint,
+        args.baseline_auth_token_env, "stale", args.program_protocol,
+    )
+    candidate_adapter, candidate_factory = _selected_adapter(
+        args.candidate, args.candidate_program, args.candidate_endpoint,
+        args.candidate_auth_token_env, "correction", args.program_protocol,
+    )
     report = compare_held_out(
         suite,
-        _adapter_factory(args.baseline, args.baseline_program, "stale", args.program_protocol),
-        _adapter_factory(args.candidate, args.candidate_program, "correction", args.program_protocol),
+        baseline_factory,
+        candidate_factory,
         budget,
         args.attempts,
     )
@@ -274,6 +303,8 @@ def _compare(args) -> dict:
     ]
     return {
         "data_source": (
+            "synthetic manifests with remote HTTP adapter"
+            if args.baseline_endpoint or args.candidate_endpoint else
             "synthetic manifests with local executable"
             if args.baseline_program or args.candidate_program else "synthetic manifests"
         ),

@@ -13,7 +13,7 @@ Faultline evaluates one synthetic memory scenario at a time. It is intentionally
 
 ## State and isolation
 
-Scenario documents and evidence are immutable values once loaded. Every bounded evaluation opens a new adapter session. This avoids test order changing memory state. A continuity session creates a private temporary directory for one attempt and removes it on close. Its selected program owns any persistence inside that directory. The SQLite store owns durable receipts only. It has no queue, background worker, remote transport, or cache.
+Scenario documents and evidence are immutable values once loaded. Every bounded evaluation opens a new adapter session. This avoids test order changing memory state. A continuity session creates a private temporary directory for one attempt and removes it on close. Its selected program owns any persistence inside that directory. An HTTP snapshot session sends one bounded request containing the scenario history and probe. The SQLite store owns durable receipts only. It has no queue, background worker, or cache.
 
 ## Failure guarantees
 
@@ -23,4 +23,4 @@ In process adapter deadlines are cooperative. Faultline can detect that a synchr
 
 ## Trust boundary
 
-Scenarios are untrusted local inputs. Strict scenario parsing rejects unknown schema fields. Adapter output is checked before evidence is recorded, and durable receipts must have outcomes consistent with their expected and actual answers. Expected answers never cross the adapter boundary. Provider exception messages are not included in evidence. A selected executable is trusted code with the user's file and network permissions, not an isolated plugin. The current release includes no credential, network, authentication, or tenant boundary.
+Scenarios are untrusted local inputs. Strict scenario parsing rejects unknown schema fields. Adapter output is checked before evidence is recorded, and durable receipts must have outcomes consistent with their expected and actual answers. Expected answers never cross the adapter boundary. Provider exception messages are not included in evidence. A selected executable is trusted code with the user's file and network permissions, not an isolated plugin. Remote endpoints receive scenario events and probes over HTTPS outside loopback. Optional bearer credentials remain process memory only. The current release has no inbound authentication or tenant boundary.
