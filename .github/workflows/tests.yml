@@ -19,3 +19,6 @@ jobs:
           python-version: "3.11"
       - run: python -m unittest discover -s tests -v
       - run: python -m py_compile faultline/*.py
+      - run: python -m pip wheel . --wheel-dir dist
+      - run: python -m pip install --force-reinstall dist/*.whl
+      - run: cd /tmp && faultline --help

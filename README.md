@@ -4,7 +4,14 @@ Find where an AI memory breaks. Prove whether a repair helps.
 
 The first slice checks structured recall after a correction. It compares two deliberately simple synthetic memory fixtures. There are no model results or production claims yet.
 
-Run with Python 3.11 or newer:
+Install the local checkout with Python 3.11 or newer:
+
+```sh
+python3 -m pip install .
+faultline --help
+```
+
+Run directly from a checkout:
 
 ```sh
 python3 -m faultline
@@ -24,6 +31,8 @@ python3 -m faultline sweep --program examples/sqlite_continuity.py --program-pro
 The local CLI emits JSON only. `run` executes a synthetic scenario with a declared budget and optional durable receipts. `compare` evaluates two adapters against a public synthetic held out manifest. `minimize` reduces a reproducible synthetic failure while preserving direct probe history. `show --database evidence.db --run-id ID` reads one receipt. `delete` removes one local receipt and `prune --database evidence.db --keep N` bounds retention. `show`, `delete`, `prune`, and `verify` require an existing database so a typo cannot create an empty store. `verify --database evidence.db` checks SQLite structure, stored receipt payloads, and indexed receipt metadata. Built in adapters are deliberately simple fixtures named `stale` and `correction`. `run --program`, `minimize --program`, `sweep --program`, and `compare --baseline-program` or `--candidate-program` can execute a trusted local memory program. `run --endpoint` executes one bounded snapshot against an HTTP adapter. `compare --baseline-endpoint` and `--candidate-endpoint` apply the same held out fail closed repair gate to remote adapters. Each remote side may read its bearer credential from its own named environment variable. Remote continuity, minimization, and sweep integration remain out of scope.
 
 `benchmark` measures only the fixed synthetic harness workload. Its method and limitations are in [BENCHMARKS.md](BENCHMARKS.md).
+
+The project builds a dependency free Python wheel named `faultline-memory`. The wheel installs the `faultline` console command and exposes the same module CLI. CI builds the wheel, installs it, and runs the command from outside the checkout so source tree imports cannot hide missing package files. Version `0.1.0` is an alpha interface, not a published registry release or stability promise.
 
 The continuity protocol starts a new executable process for every observation and recall. Its SQLite example persists facts in a private trial directory, so the correction survives process restarts. The default snapshot protocol sends the whole event history to one process and cannot test that guarantee. Use `--program-protocol continuity` with `run`, `compare`, `minimize`, or `sweep` to check restart durability in individual runs, repair gates, minimized counterexamples, or generated histories. A comparison may mix a fixture and one continuity program, but at least one local program is required. Both examples are local reference implementations, not real AI memory systems. Continuity launches many processes and is not suitable for a harness throughput claim.
 
@@ -92,6 +101,6 @@ Read [ARCHITECTURE.md](ARCHITECTURE.md), [DESIGN_DECISIONS.md](DESIGN_DECISIONS.
 7. DONE: failure minimization that preserves direct scenario dependencies.
 8. DONE: local CLI reports and focused evidence receipt viewer.
 9. PARTIAL: independent local executable comparisons, process restart continuity checks, bounded remote snapshot runs, and remote repair comparisons are implemented. Independent real memory evaluations remain.
-10. PARTIAL: CI, synthetic harness benchmarking, local privacy controls, and concurrent writer stress coverage are implemented. Deployment remains.
+10. PARTIAL: CI, wheel build and installed CLI smoke checks, synthetic harness benchmarking, local privacy controls, and concurrent writer stress coverage are implemented. Registry publication and deployment remain.
 
 Every completed issue needs tests, a reviewed diff, and a commit reference. Passing fixtures is not evidence that a real assistant works.
