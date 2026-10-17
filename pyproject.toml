@@ -7,7 +7,7 @@ name = "faultline-memory"
 version = "0.1.0"
 description = "Failure evidence and repair gates for AI memory systems"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.15"
 authors = [{name = "Sarthak Verma"}]
 classifiers = [
   "Development Status :: 3 - Alpha",

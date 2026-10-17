@@ -4,7 +4,7 @@ Find where an AI memory breaks. Prove whether a repair helps.
 
 The first slice checks structured recall after a correction. It compares two deliberately simple synthetic memory fixtures. There are no model results or production claims yet.
 
-Install the local checkout with Python 3.11 or newer:
+Install the local checkout with Python 3.11 through 3.14:
 
 ```sh
 python3 -m pip install .
@@ -33,7 +33,7 @@ The local CLI emits JSON only. `run` executes a synthetic scenario with a declar
 
 `benchmark` measures only the fixed synthetic harness workload. Its method and limitations are in [BENCHMARKS.md](BENCHMARKS.md).
 
-The project builds a dependency free Python wheel named `faultline-memory`. The wheel installs the `faultline` console command and exposes the same module CLI. CI builds the wheel, installs it, and runs the command from outside the checkout so source tree imports cannot hide missing package files. Version `0.1.0` is an alpha interface, not a published registry release or stability promise.
+The project builds a dependency free Python wheel named `faultline-memory`. The wheel installs the `faultline` console command and exposes the same module CLI. CI runs the suite, builds the wheel, verifies that its runtime module set exactly matches the source package, installs it, and invokes the command from outside the checkout on every declared Python version from 3.11 through 3.14. This catches both missing files and deleted modules leaked from stale build artifacts. Version `0.1.0` is an alpha interface, not a published registry release or stability promise.
 
 The optional `chroma` extra pins Chroma `1.5.9` and enables an independent continuity integration. The example stores each fact in a real Chroma persistent collection, starts a fresh Python process for every write, delete, and recall, disables Chroma telemetry, supplies embeddings locally, and makes no model or paid provider call. CI evaluates this adapter through the held out repair gate. This proves Faultline can drive one external persistence implementation; it does not prove semantic retrieval quality, production durability, or representative AI memory behavior.
 
